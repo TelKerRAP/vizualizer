@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 const canvas=$("#visualizer"), ctx=canvas.getContext("2d",{alpha:false}), audio=$("#audio");
 let audioContext, analyser, sourceNode, mediaDestination, image=null, imageUrl=null, audioUrl=null;
-let format="landscape", intensity=.75, glow=.7, particleCount=90, particles=[], recording=false;
+let format="landscape", intensity=.75, glow=.7, particleCount=90, particles=[], recording=false, clipExporting=false, clipItems=[], clipId=0, clipBlobUrls=[];
 let lyrics=[], lastBeat=0, beatFlash=0, previousBass=0, sceneIndex=0, sceneStarted=0, lastSceneChange=0;
 const palettes={
  gothic:{name:"GOTHIC",hue:292,secondary:326,accent:"#ff3fbf"},
@@ -100,10 +100,181 @@ $("#applyLyrics").addEventListener("click",()=>{
  ? `${lyrics.length} líneas cargadas${invalid.length?`; ${invalid.length} línea(s) no reconocidas`:''}.`
  : "No se detectaron líneas. Usa [01:12.50] Texto, 01:12.5 | Texto o 72.5 | Texto.";
 });
+
+// XZ Clip Generator: manually editable segments + heuristic lyric-based suggestions.
+function parseClipTime(raw){
+ const s=String(raw??"").trim();
+ if(!s)return NaN;
+ if(/^\d+(?:\.\d+)?$/.test(s))return Number(s);
+ const m=s.match(/^(\d{1,3}):([0-5]?\d(?:\.\d+)?)$/);
+ return m?Number(m[1])*60+Number(m[2]):NaN;
+}
+function fmtTime(sec){sec=Math.max(0,Number(sec)||0);const m=Math.floor(sec/60),s=(sec%60).toFixed(1).padStart(4,"0");return `${String(m).padStart(2,"0")}:${s}`;}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function addClip(start,end,name,selected=true){
+ const duration=audio.duration;
+ if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||(Number.isFinite(duration)&&end>duration)){
+  $("#clipStatus").textContent=`Tiempo inválido. La duración de la canción es ${Number.isFinite(duration)?fmtTime(duration):"desconocida"}.`;
+  return false;
+ }
+ const duplicate=clipItems.some(c=>Math.abs(c.start-start)<.05&&Math.abs(c.end-end)<.05);
+ if(duplicate){$("#clipStatus").textContent="Ese fragmento ya está en la lista.";return false}
+ clipItems.push({id:++clipId,start,end,name:(name||`Clip ${clipId}`).trim(),selected});
+ renderClipList();$("#clipStatus").textContent=`Fragmento añadido: ${fmtTime(start)} – ${fmtTime(end)}.`;return true;
+}
+function renderClipList(){
+ const root=$("#clipList");
+ if(!clipItems.length){root.innerHTML='<p class="hint">Aún no hay clips en la lista.</p>';return}
+ root.innerHTML=clipItems.map(c=>`<article class="clip-item" data-id="${c.id}">
+ <div class="clip-head"><input type="checkbox" class="clip-select" ${c.selected?"checked":""} aria-label="Seleccionar clip"><strong>${escapeHtml(c.name)}</strong></div>
+ <div class="clip-meta">${fmtTime(c.start)} → ${fmtTime(c.end)} · ${(c.end-c.start).toFixed(1)} s</div>
+ <div class="clip-input-grid"><label>Inicio<input class="edit-start" value="${c.start.toFixed(2)}" inputmode="decimal"></label><label>Final<input class="edit-end" value="${c.end.toFixed(2)}" inputmode="decimal"></label></div>
+ <label>Nombre<input class="edit-name" maxlength="80" value="${escapeHtml(c.name)}"></label>
+ <div class="clip-actions"><button type="button" class="preview-clip">▶ Previsualizar</button><button type="button" class="save-clip">Guardar cambios</button><button type="button" class="delete-clip">Eliminar</button></div></article>`).join("");
+ root.querySelectorAll(".clip-item").forEach(card=>{
+  const id=Number(card.dataset.id),item=clipItems.find(c=>c.id===id);
+  card.querySelector(".clip-select").addEventListener("change",e=>item.selected=e.target.checked);
+  card.querySelector(".save-clip").addEventListener("click",()=>{
+   const a=parseClipTime(card.querySelector(".edit-start").value),b=parseClipTime(card.querySelector(".edit-end").value),n=card.querySelector(".edit-name").value.trim();
+   if(!Number.isFinite(a)||!Number.isFinite(b)||a<0||b<=a||(Number.isFinite(audio.duration)&&b>audio.duration)){alert("Revisa el inicio y el final del fragmento.");return}
+   item.start=a;item.end=b;item.name=n||`Clip ${id}`;renderClipList();
+  });
+  card.querySelector(".delete-clip").addEventListener("click",()=>{clipItems=clipItems.filter(c=>c.id!==id);renderClipList()});
+  card.querySelector(".preview-clip").addEventListener("click",async()=>{if(!audio.src)return;try{await setupAudio();audio.currentTime=item.start;await audio.play();$("#playBtn").textContent="Ⅱ Pausar";audio.ontimeupdate=()=>{if(audio.currentTime>=item.end){audio.pause();audio.ontimeupdate=null;audio.currentTime=item.start}}}catch(e){alert("No se pudo previsualizar: "+e.message)}});
+ });
+}
+$("#addClipBtn").addEventListener("click",()=>{
+ const a=parseClipTime($("#clipStart").value),b=parseClipTime($("#clipEnd").value);
+ addClip(a,b,$("#clipName").value||`Clip ${clipItems.length+1}`);
+});
+$("#detectClipsBtn").addEventListener("click",()=>{
+ if(!audio.src){$("#clipStatus").textContent="Primero carga una canción.";return}
+ if(!lyrics.length){$("#clipStatus").textContent="Primero pega las letras y pulsa Aplicar letras.";return}
+ const groups=[];
+ // Use explicit section markers and repeated lines as a transparent heuristic.
+ const marked=lyrics.filter(l=>/\b(coro|estribillo|puente|breakdown|outro|verso)\b/i.test(l.text));
+ for(const l of marked){
+  const idx=lyrics.indexOf(l),next=lyrics[idx+1];
+  const start=Math.max(0,l.time-2),end=Math.min(audio.duration||Infinity,(next?.time??l.time+30)+1);
+  if(end-start>=5)groups.push({start,end,name:`Sección: ${l.text}`});
+ }
+ const norm=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\p{L}\p{N} ]/gu,"").trim();
+ const byText=new Map();
+ lyrics.forEach(l=>{const key=norm(l.text);if(key.length>=12){if(!byText.has(key))byText.set(key,[]);byText.get(key).push(l)}});
+ for(const [key,lines] of byText){
+  if(lines.length>=2){
+   for(const l of lines){const idx=lyrics.indexOf(l),next=lyrics[idx+1];const start=Math.max(0,l.time-2),end=Math.min(audio.duration||Infinity,(next?.time??l.time+20)+1);if(end-start>=5)groups.push({start,end,name:`Frase repetida: ${l.text}`})}
+  }
+ }
+ // Rank long/emphatic lines as candidate highlights, without claiming acoustic chorus detection.
+ for(const l of lyrics){
+  if(l.text.length>=34&&/[!?…]|harto|verdad|realidad|sombras|corazon|corazón/i.test(l.text)){
+   const idx=lyrics.indexOf(l),next=lyrics[idx+1],start=Math.max(0,l.time-2),end=Math.min(audio.duration||Infinity,(next?.time??l.time+18)+1);
+   if(end-start>=5)groups.push({start,end,name:`Frase destacada: ${l.text}`});
+  }
+ }
+ const unique=[];
+ groups.sort((a,b)=>a.start-b.start).forEach(g=>{
+  if(!unique.some(u=>Math.abs(u.start-g.start)<3&&Math.abs(u.end-g.end)<4))unique.push(g)
+ });
+ let added=0;
+ for(const g of unique.slice(0,40))if(addClip(g.start,g.end,g.name,false))added++;
+ $("#clipStatus").textContent=added?`Se sugirieron ${added} fragmentos. Revísalos, edita tiempos y marca los que quieras exportar.`:"No se detectaron candidatos claros. Añade los tiempos manualmente.";
+});
 async function loadFFmpeg(){const {FFmpeg}=await import("https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");const {toBlobURL}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");const ff=new FFmpeg();ff.on("progress",({progress})=>{$("#progressBar").style.width=`${Math.min(99,Math.round(progress*100))}%`;$("#exportMessage").textContent=`Conversión MP4: ${Math.round(progress*100)}%`});const core="https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",wasm="https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm";await ff.load({coreURL:await toBlobURL(core,"text/javascript"),wasmURL:await toBlobURL(wasm,"application/wasm")});return ff}
+
+$("#exportClipsBtn").addEventListener("click",async()=>{
+ if(clipExporting)return;
+ if(!audio.src){alert("Carga una canción antes de exportar.");return}
+ const selected=clipItems.filter(c=>c.selected);
+ const formats=[];
+ if($("#clipVertical").checked)formats.push("portrait");
+ if($("#clipHorizontal").checked)formats.push("landscape");
+ if(!selected.length){alert("Selecciona al menos un clip.");return}
+ if(!formats.length){alert("Selecciona al menos un formato de salida.");return}
+ if(!window.MediaRecorder||!canvas.captureStream){alert("Usa Chrome o Edge actualizado para exportar clips.");return}
+ const btn=$("#exportClipsBtn"),msg=$("#clipsExportMessage"),bar=$("#clipsProgressBar"),downloadRoot=$("#clipDownloads");
+ let ff=null;const outputs=[];clipExporting=true;recording=true;btn.disabled=true;downloadRoot.innerHTML="";$("#clipsZipLink").hidden=true;bar.style.width="0%";
+ const oldFormat=format,oldTime=audio.currentTime,oldPaused=audio.paused;
+ try{
+  await setupAudio();
+  msg.textContent="Preparando el motor de exportación…";
+  ff=await loadFFmpeg();
+  const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");
+  const total=selected.length*formats.length;let done=0;
+  for(const item of selected){
+   for(const targetFormat of formats){
+    format=targetFormat;resizeCanvas();
+    // Allow the canvas to paint in its target aspect ratio before recording.
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    audio.pause();audio.currentTime=item.start;
+    await new Promise((resolve,reject)=>{
+     const ok=()=>{cleanup();resolve()},bad=()=>{cleanup();reject(new Error("No se pudo posicionar el audio en "+fmtTime(item.start)))};
+     const cleanup=()=>{audio.removeEventListener("seeked",ok);audio.removeEventListener("error",bad)};
+     audio.addEventListener("seeked",ok,{once:true});audio.addEventListener("error",bad,{once:true});
+     if(Math.abs(audio.currentTime-item.start)<0.02) {cleanup();resolve()}
+    });
+    await setupAudio();
+    const fps=Number($("#fps").value),compact=$("#quality").value==="compact";
+    const canvasStream=canvas.captureStream(fps);
+    const stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);
+    const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";
+    const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:compact?4500000:8000000});
+    const chunks=[];recorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};
+    const stopped=new Promise(resolve=>recorder.addEventListener("stop",resolve,{once:true}));
+    recorder.start(250);status(`GRABANDO CLIP ${done+1}/${total}`);msg.textContent=`Renderizando ${item.name} (${targetFormat==="portrait"?"9:16":"16:9"})…`;
+    await audio.play();
+    await new Promise((resolve,reject)=>{
+     let finished=false;
+     const finish=()=>{if(finished)return;finished=true;audio.pause();resolve()};
+     const tick=()=>{if(audio.currentTime>=item.end-0.015||audio.ended)finish()};
+     audio.addEventListener("timeupdate",tick);
+     const poll=setInterval(()=>{if(audio.currentTime>=item.end-0.015||audio.ended){clearInterval(poll);audio.removeEventListener("timeupdate",tick);finish()}},30);
+     audio.addEventListener("error",()=>{clearInterval(poll);audio.removeEventListener("timeupdate",tick);if(!finished){finished=true;reject(new Error("Error durante la reproducción"))}},{once:true});
+    });
+    if(recorder.state!=="inactive")recorder.stop();
+    await stopped;canvasStream.getTracks().forEach(t=>t.stop());stream.getTracks().forEach(t=>{if(t.kind==="video")t.stop()});
+    const webm=new Blob(chunks,{type:"video/webm"});if(!webm.size)throw new Error(`El clip "${item.name}" quedó vacío.`);
+    const inputName="xz_clip_input.webm",outputName="xz_clip_output.mp4";
+    try{await ff.deleteFile(inputName)}catch{}
+    try{await ff.deleteFile(outputName)}catch{}
+    await ff.writeFile(inputName,await fetchFile(webm));
+    const args=["-i",inputName];
+    if(compact)args.push("-vf",targetFormat==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");
+    args.push("-t",(item.end-item.start).toFixed(3),"-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart",outputName);
+    await ff.exec(args);
+    const data=await ff.readFile(outputName),blob=new Blob([data.buffer],{type:"video/mp4"});
+    if(blob.size<1024)throw new Error(`FFmpeg no generó un MP4 válido para "${item.name}".`);
+    const safeName=item.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9_-]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||`clip-${item.id}`;
+    const fileName=`XZ-${safeName}-${targetFormat==="portrait"?"9x16":"16x9"}.mp4`;
+    outputs.push({name:fileName,blob});
+    const url=URL.createObjectURL(blob);clipBlobUrls.push(url);
+    const a=document.createElement("a");a.href=url;a.download=fileName;a.textContent=`⬇ ${fileName} (${(blob.size/1048576).toFixed(1)} MB)`;downloadRoot.appendChild(a);
+    try{await ff.deleteFile(inputName)}catch{}try{await ff.deleteFile(outputName)}catch{}
+    done++;bar.style.width=`${Math.round(done/total*90)}%`;
+   }
+  }
+  msg.textContent="Empaquetando los MP4 en ZIP…";
+  const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+  const zip=new JSZip();outputs.forEach(o=>zip.file(o.name,o.blob));
+  const zipBlob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:1}},meta=>{bar.style.width=`${90+Math.round(meta.percent*.1)}%`});
+  const zipUrl=URL.createObjectURL(zipBlob);clipBlobUrls.push(zipUrl);
+  const zipLink=$("#clipsZipLink");zipLink.href=zipUrl;zipLink.download="XZ-Clip-Generator-clips.zip";zipLink.textContent=`⬇ Descargar todos los clips en ZIP (${(zipBlob.size/1048576).toFixed(1)} MB)`;zipLink.hidden=false;
+  bar.style.width="100%";msg.textContent=`Exportación completada: ${outputs.length} MP4 generados y añadidos al ZIP.`;status("CLIPS EXPORTADOS");
+ }catch(err){
+  console.error(err);msg.textContent="La exportación no se completó: "+(err?.message||err)+". Revisa la consola del navegador y prueba con un clip más corto.";
+  status("ERROR EN CLIPS");
+ }finally{
+  try{audio.pause();audio.ontimeupdate=null;audio.currentTime=Math.min(oldTime||0,Number.isFinite(audio.duration)?audio.duration:0)}catch{}
+  format=oldFormat;resizeCanvas();recording=false;clipExporting=false;btn.disabled=false;
+  if(!oldPaused&&audio.src){/* Keep transport state predictable; don't resume after batch export. */}
+  $("#playBtn").textContent="▶ Reproducir";
+  if(ff){try{ff.terminate()}catch{}}
+ }
+});
 $("#exportBtn").addEventListener("click",async()=>{if(recording)return;if(!audio.src){$("#audioFile").click();return}if(!window.MediaRecorder||!canvas.captureStream){alert("Usa Chrome o Edge actualizado para grabar el canvas.");return}
  let recorder,canvasStream;try{await setupAudio();recording=true;$("#exportBtn").disabled=true;$("#downloadLink").hidden=true;$("#progressBar").style.width="0%";audio.currentTime=0;await audio.play();const fps=+$("#fps").value,compact=$("#quality").value==="compact";canvasStream=canvas.captureStream(fps);const stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:compact?4500000:8000000});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise(resolve=>recorder.onstop=resolve);recorder.start(1000);status("GRABANDO");$("#exportMessage").textContent="Grabando en tiempo real hasta que termine la canción. Mantén la pestaña activa.";
  await new Promise((resolve,reject)=>{audio.addEventListener("ended",resolve,{once:true});audio.addEventListener("error",()=>reject(new Error("Error de reproducción del audio")),{once:true})});recorder.stop();await stopped;canvasStream.getTracks().forEach(t=>t.stop());const webm=new Blob(chunks,{type:"video/webm"});if(!webm.size)throw new Error("Grabación vacía");
- status("CONVIRTIENDO");$("#exportMessage").textContent="Cargando FFmpeg y convirtiendo a MP4…";const ff=await loadFFmpeg();const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");await ff.writeFile("input.webm",await fetchFile(webm));const args=["-i","input.webm"];if(compact)args.push("-vf","scale=1280:720:flags=lanczos");args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","output.mp4");await ff.exec(args);const out=await ff.readFile("output.mp4");const blob=new Blob([out.buffer],{type:"video/mp4"}),url=URL.createObjectURL(blob),link=$("#downloadLink");link.href=url;link.download=`XZ-Visualizer-${format==="landscape"?"16x9":"9x16"}.mp4`;link.textContent=`⬇ Descargar MP4 (${(blob.size/1048576).toFixed(1)} MB)`;link.hidden=false;$("#progressBar").style.width="100%";$("#exportMessage").textContent="Exportación terminada.";status("EXPORTADO");await ff.deleteFile("input.webm");await ff.deleteFile("output.mp4");
+ status("CONVIRTIENDO");$("#exportMessage").textContent="Cargando FFmpeg y convirtiendo a MP4…";const ff=await loadFFmpeg();const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");await ff.writeFile("input.webm",await fetchFile(webm));const args=["-i","input.webm"];if(compact)args.push("-vf",format==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","output.mp4");await ff.exec(args);const out=await ff.readFile("output.mp4");const blob=new Blob([out.buffer],{type:"video/mp4"}),url=URL.createObjectURL(blob),link=$("#downloadLink");link.href=url;link.download=`XZ-Visualizer-${format==="landscape"?"16x9":"9x16"}.mp4`;link.textContent=`⬇ Descargar MP4 (${(blob.size/1048576).toFixed(1)} MB)`;link.hidden=false;$("#progressBar").style.width="100%";$("#exportMessage").textContent="Exportación terminada.";status("EXPORTADO");await ff.deleteFile("input.webm");await ff.deleteFile("output.mp4");
  }catch(err){console.error(err);if(recorder&&recorder.state!=="inactive")recorder.stop();$("#exportMessage").textContent="Error al exportar: "+(err.message||err)+". Comprueba la conexión y prueba con un tema corto.";status("ERROR")}finally{recording=false;$("#exportBtn").disabled=false;if(!audio.paused)audio.pause();$("#playBtn").textContent="▶ Reproducir";if(canvasStream)canvasStream.getTracks().forEach(t=>t.stop())}});
 resizeCanvas();seedParticles();render();

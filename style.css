@@ -16,3 +16,18 @@
 .offset-value strong{font-size:1.1rem;color:#fff}
 .offset-value input{width:110px;background:#171020;color:#fff;border:1px solid #76518a;border-radius:8px;padding:7px}
 .offset-control small{line-height:1.5}
+
+.clip-input-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.clip-list{display:grid;gap:10px;margin:10px 0}
+.clip-item{border:1px solid #45304f;border-radius:10px;padding:10px;background:#100b18}
+.clip-item .clip-head{display:flex;gap:8px;align-items:flex-start}
+.clip-item .clip-head input[type=checkbox]{width:auto;margin-top:4px}
+.clip-item .clip-head strong{flex:1;overflow-wrap:anywhere}
+.clip-item .clip-meta{font-size:.78rem;color:#c7b8d5;margin:6px 0}
+.clip-item .clip-actions{display:flex;gap:8px;flex-wrap:wrap}
+.clip-item button{padding:6px 9px;font-size:.8rem}
+.clip-format-options{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
+.clip-downloads{display:grid;gap:8px;margin-top:10px}
+.clip-downloads a,.zip-download{display:block;padding:9px;border:1px solid #76518a;border-radius:8px;overflow-wrap:anywhere}
+#clipsProgressBar{height:100%;width:0;background:linear-gradient(90deg,#9b4dff,#ff3fbf);transition:width .15s}
+@media(max-width:600px){.clip-input-grid{grid-template-columns:1fr}}

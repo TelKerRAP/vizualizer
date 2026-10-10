@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>XZ Audio Visualizer 2.0</title><link rel="stylesheet" href="style.css">
+<title>XZ Audio Visualizer 3.0 · Clip Generator</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header class="topbar"><div class="brand-mark">XZ</div><div><h1>XZ AUDIO VISUALIZER <span>2.0</span></h1><p>CINEMATIC AUDIO ENGINE · ANIME / CYBERPUNK</p></div><span class="status" id="status">LISTO</span></header>
+<header class="topbar"><div class="brand-mark">XZ</div><div><h1>XZ AUDIO VISUALIZER <span>3.0</span></h1><p>CINEMATIC AUDIO ENGINE · ANIME / CYBERPUNK</p></div><span class="status" id="status">LISTO</span></header>
 <main class="layout">
 <section class="stage-panel">
   <div class="stage-wrap"><canvas id="visualizer" width="1920" height="1080"></canvas><div class="stage-label">LIVE PREVIEW · AUDIO REACTIVE</div><div class="scene-label" id="sceneLabel">ESCENA 01 / AWAKENING</div></div>
@@ -40,10 +40,28 @@
   <small>Si la letra aparece antes de la voz, usa un valor positivo para retrasarla. Si aparece después, usa un valor negativo para adelantarla. El cambio se aplica en vivo, sin volver a cargar las letras.</small>
 </div>
 <button id="applyLyrics">Aplicar letras</button><p class="hint" id="lyricsStatus">No hay letras cargadas.</p></section>
-<section class="control-card export-card"><h2>05 / EXPORTACIÓN</h2>
+<section class="control-card"><h2>05 / XZ CLIP GENERATOR</h2>
+<p class="hint">Detecta posibles coros/frases destacadas a partir de la letra y revisa manualmente los fragmentos antes de exportar. La detección es una sugerencia, no un análisis semántico de audio.</p>
+<div class="clip-input-grid">
+<label>Inicio (mm:ss o segundos)<input id="clipStart" type="text" value="0" placeholder="00:30"></label>
+<label>Final (mm:ss o segundos)<input id="clipEnd" type="text" value="30" placeholder="01:00"></label>
+</div>
+<label>Nombre del clip<input id="clipName" type="text" value="Clip destacado" maxlength="80"></label>
+<button id="addClipBtn" type="button">＋ Añadir fragmento manual</button>
+<button id="detectClipsBtn" type="button">✦ Detectar coros y frases</button>
+<div id="clipStatus" class="hint">Carga audio y aplica la letra para detectar fragmentos.</div>
+<div id="clipList" class="clip-list"><p class="hint">Aún no hay clips en la lista.</p></div>
+<div class="clip-format-options"><label class="check-row"><input id="clipVertical" type="checkbox" checked> Exportar vertical 9:16</label><label class="check-row"><input id="clipHorizontal" type="checkbox" checked> Exportar horizontal 16:9</label></div>
+<button id="exportClipsBtn" class="export" type="button">● Exportar clips seleccionados</button>
+<div class="progress-track"><div id="clipsProgressBar"></div></div>
+<p id="clipsExportMessage" class="hint">Cada clip se renderiza con audio, fondo animado, espectro y letra; se generarán MP4 y un ZIP.</p>
+<a id="clipsZipLink" hidden>Descargar ZIP de clips</a>
+<div id="clipDownloads" class="clip-downloads"></div>
+</section>
+<section class="control-card export-card"><h2>06 / EXPORTACIÓN COMPLETA</h2>
 <label>FPS<select id="fps"><option value="30" selected>30 FPS</option><option value="60">60 FPS</option></select></label>
 <label>Calidad<select id="quality"><option value="standard">Estándar · 1080p</option><option value="compact">Compacta · 720p</option></select></label>
 <button id="exportBtn" class="export">● Grabar y exportar MP4</button><div class="progress-track"><div id="progressBar"></div></div><p id="exportMessage" class="hint">Se graba en tiempo real y después se convierte a MP4. Mantén la pestaña abierta.</p><a id="downloadLink" hidden>Descargar MP4</a>
 </section></aside></main>
-<footer>XZ AUDIO VISUALIZER 2.0 · PROCESAMIENTO LOCAL · HTML / CSS / JAVASCRIPT</footer>
+<footer>XZ AUDIO VISUALIZER 3.0 · PROCESAMIENTO LOCAL · HTML / CSS / JAVASCRIPT</footer>
 <script type="module" src="app.js"></script></body></html>

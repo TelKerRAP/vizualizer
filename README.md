@@ -50,3 +50,14 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - Los cambios se aplican en tiempo real mientras se reproduce el audio, sin volver a aplicar las letras.
 - Convención: valor positivo retrasa la letra; valor negativo la adelanta.
 - Esta herramienta corrige un desfase constante. Si el error cambia a lo largo de la canción, las marcas de tiempo individuales deben revisarse.
+
+
+## v3.0.0 — XZ Clip Generator
+- Añade clips manuales mediante inicio/final en `mm:ss` o segundos.
+- Incluye detección heurística de secciones/frases basada en las letras (marcadores como coro/estribillo y líneas repetidas o destacadas). Las sugerencias requieren revisión manual; no se presenta como detección acústica real de coros.
+- Permite editar nombre, tiempos, selección y previsualizar cada fragmento.
+- Exporta clips seleccionados a MP4 en vertical 9:16, horizontal 16:9 o ambos; integra audio capturado, visualizador reactivo y letra según reloj del audio.
+- Ofrece descarga individual y ZIP de los MP4.
+- La exportación usa MediaRecorder en tiempo real y FFmpeg.wasm + JSZip desde CDN, por lo que requiere navegador moderno, conexión al cargar bibliotecas y mantener la pestaña abierta.
+- La sincronización del texto usa el tiempo actual del audio más el desfase global configurado.
+- No se afirma que la exportación esté probada en un navegador real: debe validarse localmente con un clip corto antes de una exportación larga.
