@@ -207,12 +207,18 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
     format=targetFormat;resizeCanvas();
     // Allow the canvas to paint in its target aspect ratio before recording.
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    audio.pause();audio.currentTime=item.start;
+    audio.pause();
     await new Promise((resolve,reject)=>{
-     const ok=()=>{cleanup();resolve()},bad=()=>{cleanup();reject(new Error("No se pudo posicionar el audio en "+fmtTime(item.start)))};
-     const cleanup=()=>{audio.removeEventListener("seeked",ok);audio.removeEventListener("error",bad)};
-     audio.addEventListener("seeked",ok,{once:true});audio.addEventListener("error",bad,{once:true});
-     if(Math.abs(audio.currentTime-item.start)<0.02) {cleanup();resolve()}
+     let settled=false;
+     const cleanup=()=>{clearTimeout(timer);audio.removeEventListener("seeked",ok);audio.removeEventListener("error",bad)};
+     const finish=()=>{if(settled)return;settled=true;cleanup();resolve()};
+     const ok=()=>{if(Math.abs(audio.currentTime-item.start)<0.25)finish()};
+     const bad=()=>{if(settled)return;settled=true;cleanup();reject(new Error("El navegador no pudo buscar el segundo "+fmtTime(item.start)+" en el audio."))};
+     const timer=setTimeout(()=>{if(settled)return;settled=true;cleanup();reject(new Error("Tiempo de espera agotado al buscar el inicio del clip. Espera a que el audio termine de cargar e inténtalo otra vez."))},8000);
+     audio.addEventListener("seeked",ok);audio.addEventListener("error",bad);
+     if(Math.abs(audio.currentTime-item.start)<0.02){finish();return}
+     audio.currentTime=item.start;
+     if(audio.seeking===false && audio.readyState>=2 && Math.abs(audio.currentTime-item.start)<0.25)finish();
     });
     await setupAudio();
     const fps=Number($("#fps").value),compact=$("#quality").value==="compact";
@@ -221,8 +227,12 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
     const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";
     const recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:compact?4500000:8000000});
     const chunks=[];recorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};
-    const stopped=new Promise(resolve=>recorder.addEventListener("stop",resolve,{once:true}));
-    recorder.start(250);status(`GRABANDO CLIP ${done+1}/${total}`);msg.textContent=`Renderizando ${item.name} (${targetFormat==="portrait"?"9:16":"16:9"})…`;
+    const stopped=new Promise((resolve,reject)=>{
+     const watchdog=setTimeout(()=>reject(new Error("La grabadora del navegador no terminó de cerrar el video.")),Math.max(20000,(item.end-item.start)*3000));
+     recorder.addEventListener("stop",()=>{clearTimeout(watchdog);resolve()},{once:true});
+     recorder.addEventListener("error",e=>{clearTimeout(watchdog);reject(new Error("MediaRecorder falló: "+(e.error?.message||"error desconocido")))},{once:true});
+    });
+    recorder.start(250);status(`GRABANDO CLIP ${done+1}/${total}`);msg.textContent=`Grabando video en tiempo real: ${item.name} (${targetFormat==="portrait"?"9:16":"16:9"})…`;
     await audio.play();
     await new Promise((resolve,reject)=>{
      let finished=false;
@@ -243,9 +253,9 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
     try{await ff.deleteFile(inputName)}catch{}
     try{await ff.deleteFile(outputName)}catch{}
     await ff.writeFile(inputName,await fetchFile(webm));
-    const args=["-i",inputName];
+    const args=["-i",inputName,"-t",(item.end-item.start).toFixed(3)];
     if(compact)args.push("-vf",targetFormat==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");
-    args.push("-t",(item.end-item.start).toFixed(3),"-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart",outputName);
+    args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","-f","mp4",outputName);
     await ff.exec(args);
     const data=await ff.readFile(outputName),blob=new Blob([data.buffer],{type:"video/mp4"});
     if(blob.size<1024)throw new Error(`FFmpeg no generó un MP4 válido para "${item.name}".`);
@@ -258,7 +268,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
     done++;bar.style.width=`${Math.round(done/total*90)}%`;
    }
   }
-  msg.textContent="Empaquetando los MP4 en ZIP…";
+  msg.textContent=`Los MP4 se generaron (${outputs.length}). Empaquetando en ZIP…`;
   const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
   const zip=new JSZip();outputs.forEach(o=>zip.file(o.name,o.blob));
   const zipBlob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:1}},meta=>{bar.style.width=`${90+Math.round(meta.percent*.1)}%`});
@@ -266,7 +276,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
   const zipLink=$("#clipsZipLink");zipLink.href=zipUrl;zipLink.download="XZ-Clip-Generator-clips.zip";zipLink.textContent=`⬇ Descargar todos los clips en ZIP (${(zipBlob.size/1048576).toFixed(1)} MB)`;zipLink.hidden=false;
   bar.style.width="100%";msg.textContent=`Exportación completada: ${outputs.length} MP4 generados y añadidos al ZIP.`;status("CLIPS EXPORTADOS");
  }catch(err){
-  console.error(err);msg.textContent="La exportación no se completó: "+(err?.message||err)+". Si abriste index.html con doble clic, prueba con el servidor local incluido; luego intenta un solo clip de 10 segundos.";
+  console.error(err);msg.textContent="ERROR EN EXPORTACIÓN: "+(err?.message||err)+". Revisa si el fallo ocurrió al cargar FFmpeg, grabar el WebM, convertir a MP4 o empaquetar el ZIP. Prueba primero un clip de 5–10 s en un solo formato.";
   status("ERROR EN CLIPS");
  }finally{
   try{audio.pause();audio.ontimeupdate=null;audio.currentTime=Math.min(oldTime||0,Number.isFinite(audio.duration)?audio.duration:0)}catch{}

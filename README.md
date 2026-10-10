@@ -68,3 +68,10 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - Mensajes de error más claros si no hay clips seleccionados o el audio no avanza.
 - Se incluye `Iniciar-XZ-Clip-Generator.bat` para Windows, que sirve la app por HTTP local en `http://localhost:8000`. Es preferible a abrir `index.html` directamente con doble clic cuando el navegador bloquea módulos o recursos CDN.
 - Flujo recomendado para validar: añade manualmente un clip de 0 a 10 segundos, marca un solo formato y exporta. Esta versión aún requiere validación en el navegador del usuario; no se declara probada la conversión real.
+
+
+## v3.0.2 — Export diagnostics
+- Corrige la secuencia de búsqueda del audio: el listener `seeked` se instala antes de cambiar `currentTime`, evitando perder el evento y quedarse sin generar video.
+- Añade límites de espera para la búsqueda y el cierre de MediaRecorder, para mostrar un error concreto en lugar de quedarse bloqueado.
+- La conversión FFmpeg especifica el formato de salida MP4 y presenta mensajes de progreso por etapa.
+- Prueba sugerida: un clip de 5–10 segundos, un solo formato. Esta entrega no se declara probada en navegador real; los mensajes ahora ayudarán a identificar el siguiente punto de fallo.
