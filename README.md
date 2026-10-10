@@ -42,3 +42,11 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - También acepta `00:12.50 | Texto` y `12.5 | Texto`.
 - Incluye un control de desfase de -10 a +10 segundos para corregir letras que entran antes o después.
 - Para sincronización precisa, los tiempos de cada línea deben corresponder al momento real en que se canta. El control de desfase corrige un desplazamiento global, no errores distintos entre líneas.
+
+
+## v2.0.3 — Calibración de desfase global
+- Se amplió el rango del desfase a -60…+60 segundos.
+- Se añadieron controles de ajuste fino ±0.1 s y un campo numérico editable.
+- Los cambios se aplican en tiempo real mientras se reproduce el audio, sin volver a aplicar las letras.
+- Convención: valor positivo retrasa la letra; valor negativo la adelanta.
+- Esta herramienta corrige un desfase constante. Si el error cambia a lo largo de la canción, las marcas de tiempo individuales deben revisarse.

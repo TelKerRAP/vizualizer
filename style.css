@@ -8,3 +8,11 @@
 .offset-control strong{float:right;color:#fff}
 .offset-control input{display:block;width:100%;margin:10px 0}
 .offset-control small{display:block;opacity:.8}
+
+.offset-row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.offset-row input{flex:1;min-width:80px}
+.offset-row button{white-space:nowrap;padding:8px 10px;font-size:.8rem}
+.offset-value{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0}
+.offset-value strong{font-size:1.1rem;color:#fff}
+.offset-value input{width:110px;background:#171020;color:#fff;border:1px solid #76518a;border-radius:8px;padding:7px}
+.offset-control small{line-height:1.5}

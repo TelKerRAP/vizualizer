@@ -31,11 +31,11 @@ function drawSpectrum(data,bass,time){if(!$("#showSpectrum").checked)return;cons
 function drawText(){if(!$("#showText").checked)return;const w=canvas.width,h=canvas.height,min=Math.min(w,h),y=format==="portrait"?h*.72:h*.82;ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";ctx.shadowBlur=18*glow;ctx.shadowColor=palette.accent;ctx.fillStyle="#fff4ff";ctx.font=`900 ${Math.round(min*(format==="portrait"?.05:.06))}px Arial`;ctx.fillText($("#songTitle").value.toUpperCase(),w/2,y,w*.84);ctx.shadowBlur=10*glow;ctx.fillStyle="#a9f7ff";ctx.font=`600 ${Math.round(min*.022)}px Arial`;ctx.fillText($("#artistName").value.toUpperCase(),w/2,y+min*.055,w*.75);ctx.restore()}
 function drawLyrics(){
  if(!lyrics.length || !Number.isFinite(audio.currentTime)) return;
- const offset=Number($("#lyricsOffset")?.value||0); const t=audio.currentTime-offset; let index=-1;
- for(let i=0;i<lyrics.length;i++){if(t>=lyrics[i].time)index=i;else break}
+ const offset=Number($("#lyricsOffset")?.value||0); const lyricClock=audio.currentTime-offset; let index=-1;
+ for(let i=0;i<lyrics.length;i++){if(lyricClock>=lyrics[i].time)index=i;else break}
  if(index<0)return;
  const line=lyrics[index], next=lyrics[index+1];
- if(next && t>=next.time)return;
+ if(next && lyricClock>=next.time)return;
  const w=canvas.width,h=canvas.height,min=Math.min(w,h),y=h*(format==="portrait"?.855:.905),bandH=min*.075;
  ctx.save();
  const grad=ctx.createLinearGradient(0,y-bandH/2,0,y+bandH/2);
@@ -77,9 +77,18 @@ function parseLyricRow(row){
  if(m)return {time:parseLyricTime(m[1]),text:m[2].trim()};
  return null;
 }
-$("#lyricsOffset").addEventListener("input",e=>{
- $("#lyricsOffsetOut").textContent=`${Number(e.target.value)>0?"+":""}${Number(e.target.value).toFixed(1)} s`;
-});
+function setLyricsOffset(raw){
+ const n=Number(raw);
+ const safe=Number.isFinite(n)?Math.max(-60,Math.min(60,n)):0;
+ const rounded=Math.round(safe*10)/10;
+ $("#lyricsOffset").value=String(rounded);
+ $("#lyricsOffsetNumber").value=String(rounded);
+ $("#lyricsOffsetOut").textContent=`${rounded>0?"+":""}${rounded.toFixed(1)} s`;
+}
+$("#lyricsOffset").addEventListener("input",e=>setLyricsOffset(e.target.value));
+$("#lyricsOffsetNumber").addEventListener("change",e=>setLyricsOffset(e.target.value));
+$("#offsetMinus").addEventListener("click",()=>setLyricsOffset(Number($("#lyricsOffset").value)-0.1));
+$("#offsetPlus").addEventListener("click",()=>setLyricsOffset(Number($("#lyricsOffset").value)+0.1));
 $("#applyLyrics").addEventListener("click",()=>{
  const rows=$("#lyrics").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),parsed=[],invalid=[];
  for(const row of rows){

@@ -29,9 +29,16 @@
 <section class="control-card"><h2>04 / LETRAS SINCRONIZADAS</h2>
 <p class="hint">Acepta formato LRC [mm:ss.xx] letra, mm:ss.xx | letra o segundos | letra. Ajusta el desfase si la letra entra antes o después del audio.</p>
 <textarea id="lyrics" rows="7" placeholder="[00:00.00] (Intro)&#10;[00:12.50] Primera línea&#10;18.0 | Segunda línea"></textarea>
-<label class="offset-control">Ajuste de sincronización <strong id="lyricsOffsetOut">0.0 s</strong>
-<input id="lyricsOffset" type="range" min="-10" max="10" step="0.1" value="0">
-<small>Negativo = mostrar antes · Positivo = mostrar después</small></label>
+<div class="offset-control">
+  <label for="lyricsOffset">Desfase global de la letra</label>
+  <div class="offset-row">
+    <button type="button" id="offsetMinus" aria-label="Restar una décima">−0.1 s</button>
+    <input id="lyricsOffset" type="range" min="-60" max="60" step="0.1" value="0">
+    <button type="button" id="offsetPlus" aria-label="Sumar una décima">+0.1 s</button>
+  </div>
+  <div class="offset-value"><strong id="lyricsOffsetOut">0.0 s</strong><input id="lyricsOffsetNumber" type="number" min="-60" max="60" step="0.1" value="0" aria-label="Desfase en segundos"></div>
+  <small>Si la letra aparece antes de la voz, usa un valor positivo para retrasarla. Si aparece después, usa un valor negativo para adelantarla. El cambio se aplica en vivo, sin volver a cargar las letras.</small>
+</div>
 <button id="applyLyrics">Aplicar letras</button><p class="hint" id="lyricsStatus">No hay letras cargadas.</p></section>
 <section class="control-card export-card"><h2>05 / EXPORTACIÓN</h2>
 <label>FPS<select id="fps"><option value="30" selected>30 FPS</option><option value="60">60 FPS</option></select></label>
