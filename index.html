@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XZ Audio Visualizer 2.0</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar"><div class="brand-mark">XZ</div><div><h1>XZ AUDIO VISUALIZER <span>2.0</span></h1><p>CINEMATIC AUDIO ENGINE · ANIME / CYBERPUNK</p></div><span class="status" id="status">LISTO</span></header>
+<main class="layout">
+<section class="stage-panel">
+  <div class="stage-wrap"><canvas id="visualizer" width="1920" height="1080"></canvas><div class="stage-label">LIVE PREVIEW · AUDIO REACTIVE</div><div class="scene-label" id="sceneLabel">ESCENA 01 / AWAKENING</div></div>
+  <div class="transport"><button id="playBtn" class="primary">▶ Reproducir</button><button id="stopBtn">■ Detener</button><div class="track-name" id="trackName">Carga una canción para comenzar</div></div><audio id="audio"></audio>
+</section>
+<aside class="controls">
+<section class="control-card"><h2>01 / MEDIA</h2>
+<label class="file-label">Canción (MP3, WAV, OGG)<input id="audioFile" type="file" accept="audio/*"></label>
+<label class="file-label">Imagen de fondo<input id="imageFile" type="file" accept="image/*"></label>
+<p class="hint">La imagen se anima con zoom, iluminación, partículas y transiciones.</p></section>
+<section class="control-card"><h2>02 / LOOK PRESETS</h2>
+<label>Estética<select id="preset"><option value="gothic">XZ Gothic</option><option value="cyberpunk">Cyberpunk Neon</option><option value="opening">Anime Opening</option><option value="fantasy">Dark Fantasy</option></select></label>
+<div class="segmented"><button class="format active" data-format="landscape">YouTube 16:9</button><button class="format" data-format="portrait">Shorts 9:16</button></div>
+<label>Intensidad <output id="intensityOut">75%</output><input id="intensity" type="range" min="10" max="100" value="75"></label>
+<label>Brillo neón <output id="glowOut">70%</output><input id="glow" type="range" min="0" max="100" value="70"></label>
+<label>Partículas <output id="particlesOut">90</output><input id="particles" type="range" min="0" max="180" value="90"></label>
+<label class="check-row"><input id="showSpectrum" type="checkbox" checked> Espectro circular</label><label class="check-row"><input id="autoScenes" type="checkbox" checked> Transiciones automáticas</label></section>
+<section class="control-card"><h2>03 / TITULACIÓN</h2>
+<label>Título del tema<input id="songTitle" type="text" value="NEON REQUIEM" maxlength="80"></label><label>Artista<input id="artistName" type="text" value="XIARAKI ZUSU" maxlength="60"></label>
+<label class="check-row"><input id="showText" type="checkbox" checked> Mostrar título y artista</label></section>
+<section class="control-card"><h2>04 / LETRAS SINCRONIZADAS</h2>
+<p class="hint">Una línea por fila: tiempo en segundos | letra. Ejemplo: 12.5 | Bajo la lluvia de neón</p>
+<textarea id="lyrics" rows="5" placeholder="0 | (Intro)&#10;12.5 | Primera línea&#10;18 | Segunda línea"></textarea>
+<button id="applyLyrics">Aplicar letras</button><p class="hint" id="lyricsStatus">No hay letras cargadas.</p></section>
+<section class="control-card export-card"><h2>05 / EXPORTACIÓN</h2>
+<label>FPS<select id="fps"><option value="30" selected>30 FPS</option><option value="60">60 FPS</option></select></label>
+<label>Calidad<select id="quality"><option value="standard">Estándar · 1080p</option><option value="compact">Compacta · 720p</option></select></label>
+<button id="exportBtn" class="export">● Grabar y exportar MP4</button><div class="progress-track"><div id="progressBar"></div></div><p id="exportMessage" class="hint">Se graba en tiempo real y después se convierte a MP4. Mantén la pestaña abierta.</p><a id="downloadLink" hidden>Descargar MP4</a>
+</section></aside></main>
+<footer>XZ AUDIO VISUALIZER 2.0 · PROCESAMIENTO LOCAL · HTML / CSS / JAVASCRIPT</footer>
+<script type="module" src="app.js"></script></body></html>
