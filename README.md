@@ -1,13 +1,11 @@
-# XZ Audio Visualizer — video completo usando solo audio
+# XZ Audio Visualizer — Audio solo / video completo
 
 ## Uso
-1. Descomprime la carpeta.
-2. Abre el proyecto en VS Code y ejecútalo con Live Server, o usa `Iniciar-XZ-Clip-Generator.bat` en Windows.
-3. Selecciona únicamente tu canción en **01 / MEDIA**. La imagen de fondo es opcional.
-4. Baja hasta **06 / VIDEO COMPLETO AUTOMÁTICO**.
-5. Pulsa **Generar video de la canción completa** y deja la pestaña abierta hasta que termine.
-6. Descarga el archivo desde el enlace que aparecerá al final.
+1. Abre este proyecto con VS Code y Live Server.
+2. Selecciona un archivo de audio.
+3. Pulsa el botón principal **Generar video de la canción completa**.
+4. Espera a que termine la canción y la preparación del archivo. Descarga el video desde el enlace que aparece.
 
-No necesitas añadir clips ni seleccionar una imagen. Si no eliges una imagen, se usa el fondo animado generado por el propio visualizador. El audio se graba en tiempo real junto con el canvas; el programa intenta convertir el resultado a MP4 y conserva WebM si la conversión no está disponible.
+No necesitas añadir clips ni seleccionar una imagen. El fondo animado se genera automáticamente. La exportación graba en tiempo real; mantén la pestaña abierta. Si FFmpeg no está disponible, se ofrece el archivo WebM grabado.
 
-La exportación requiere Chrome o Edge actualizado. La conversión MP4 requiere conexión a internet para cargar FFmpeg.wasm. La grabación y la conversión pueden consumir bastante memoria en canciones largas. Esta versión no se ha validado en un navegador real dentro de este entorno; realiza la primera prueba con una canción corta.
+La sintaxis JavaScript debe validarse localmente; la exportación real requiere probarla en Chrome o Edge.
