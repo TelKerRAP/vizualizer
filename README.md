@@ -61,3 +61,10 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - La exportación usa MediaRecorder en tiempo real y FFmpeg.wasm + JSZip desde CDN, por lo que requiere navegador moderno, conexión al cargar bibliotecas y mantener la pestaña abierta.
 - La sincronización del texto usa el tiempo actual del audio más el desfase global configurado.
 - No se afirma que la exportación esté probada en un navegador real: debe validarse localmente con un clip corto antes de una exportación larga.
+
+
+## v3.0.1 — Clip Fix
+- Las sugerencias automáticas ahora quedan seleccionadas por defecto para evitar que el usuario pulse exportar con cero clips seleccionados.
+- Mensajes de error más claros si no hay clips seleccionados o el audio no avanza.
+- Se incluye `Iniciar-XZ-Clip-Generator.bat` para Windows, que sirve la app por HTTP local en `http://localhost:8000`. Es preferible a abrir `index.html` directamente con doble clic cuando el navegador bloquea módulos o recursos CDN.
+- Flujo recomendado para validar: añade manualmente un clip de 0 a 10 segundos, marca un solo formato y exporta. Esta versión aún requiere validación en el navegador del usuario; no se declara probada la conversión real.

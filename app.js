@@ -178,8 +178,8 @@ $("#detectClipsBtn").addEventListener("click",()=>{
   if(!unique.some(u=>Math.abs(u.start-g.start)<3&&Math.abs(u.end-g.end)<4))unique.push(g)
  });
  let added=0;
- for(const g of unique.slice(0,40))if(addClip(g.start,g.end,g.name,false))added++;
- $("#clipStatus").textContent=added?`Se sugirieron ${added} fragmentos. Revísalos, edita tiempos y marca los que quieras exportar.`:"No se detectaron candidatos claros. Añade los tiempos manualmente.";
+ for(const g of unique.slice(0,40))if(addClip(g.start,g.end,g.name,true))added++;
+ $("#clipStatus").textContent=added?`Se añadieron ${added} sugerencias y quedaron seleccionadas para exportar. Revisa sus tiempos y desmarca las que no quieras.`:"No se detectaron candidatos claros. Puedes crear un clip manual con inicio y final; no hace falta tener letras para exportar un fragmento.";
 });
 async function loadFFmpeg(){const {FFmpeg}=await import("https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");const {toBlobURL}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");const ff=new FFmpeg();ff.on("progress",({progress})=>{$("#progressBar").style.width=`${Math.min(99,Math.round(progress*100))}%`;$("#exportMessage").textContent=`Conversión MP4: ${Math.round(progress*100)}%`});const core="https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",wasm="https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm";await ff.load({coreURL:await toBlobURL(core,"text/javascript"),wasmURL:await toBlobURL(wasm,"application/wasm")});return ff}
 
@@ -190,7 +190,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
  const formats=[];
  if($("#clipVertical").checked)formats.push("portrait");
  if($("#clipHorizontal").checked)formats.push("landscape");
- if(!selected.length){alert("Selecciona al menos un clip.");return}
+ if(!selected.length){alert("No hay clips seleccionados. Añade un fragmento manual o pulsa Detectar coros y frases; las sugerencias aparecerán seleccionadas automáticamente.");return}
  if(!formats.length){alert("Selecciona al menos un formato de salida.");return}
  if(!window.MediaRecorder||!canvas.captureStream){alert("Usa Chrome o Edge actualizado para exportar clips.");return}
  const btn=$("#exportClipsBtn"),msg=$("#clipsExportMessage"),bar=$("#clipsProgressBar"),downloadRoot=$("#clipDownloads");
@@ -198,7 +198,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
  const oldFormat=format,oldTime=audio.currentTime,oldPaused=audio.paused;
  try{
   await setupAudio();
-  msg.textContent="Preparando el motor de exportación…";
+  msg.textContent="Preparando el motor de exportación… Si es la primera vez, puede tardar un poco en cargar FFmpeg.";
   ff=await loadFFmpeg();
   const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");
   const total=selected.length*formats.length;let done=0;
@@ -226,11 +226,15 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
     await audio.play();
     await new Promise((resolve,reject)=>{
      let finished=false;
-     const finish=()=>{if(finished)return;finished=true;audio.pause();resolve()};
+     const cleanup=()=>{clearInterval(poll);clearTimeout(timeout);audio.removeEventListener("timeupdate",tick);audio.removeEventListener("error",onError)};
+     const finish=()=>{if(finished)return;finished=true;cleanup();audio.pause();resolve()};
      const tick=()=>{if(audio.currentTime>=item.end-0.015||audio.ended)finish()};
+     const onError=()=>{if(finished)return;finished=true;cleanup();audio.pause();reject(new Error("Error durante la reproducción del audio del clip"))};
+     const poll=setInterval(tick,30);
+     const timeout=setTimeout(()=>{if(finished)return;finished=true;cleanup();audio.pause();reject(new Error("La reproducción no avanzó. Verifica que el audio pueda reproducirse y vuelve a intentar."))},Math.max(15000,(item.end-item.start)*2500));
      audio.addEventListener("timeupdate",tick);
-     const poll=setInterval(()=>{if(audio.currentTime>=item.end-0.015||audio.ended){clearInterval(poll);audio.removeEventListener("timeupdate",tick);finish()}},30);
-     audio.addEventListener("error",()=>{clearInterval(poll);audio.removeEventListener("timeupdate",tick);if(!finished){finished=true;reject(new Error("Error durante la reproducción"))}},{once:true});
+     audio.addEventListener("error",onError,{once:true});
+     tick();
     });
     if(recorder.state!=="inactive")recorder.stop();
     await stopped;canvasStream.getTracks().forEach(t=>t.stop());stream.getTracks().forEach(t=>{if(t.kind==="video")t.stop()});
@@ -262,7 +266,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
   const zipLink=$("#clipsZipLink");zipLink.href=zipUrl;zipLink.download="XZ-Clip-Generator-clips.zip";zipLink.textContent=`⬇ Descargar todos los clips en ZIP (${(zipBlob.size/1048576).toFixed(1)} MB)`;zipLink.hidden=false;
   bar.style.width="100%";msg.textContent=`Exportación completada: ${outputs.length} MP4 generados y añadidos al ZIP.`;status("CLIPS EXPORTADOS");
  }catch(err){
-  console.error(err);msg.textContent="La exportación no se completó: "+(err?.message||err)+". Revisa la consola del navegador y prueba con un clip más corto.";
+  console.error(err);msg.textContent="La exportación no se completó: "+(err?.message||err)+". Si abriste index.html con doble clic, prueba con el servidor local incluido; luego intenta un solo clip de 10 segundos.";
   status("ERROR EN CLIPS");
  }finally{
   try{audio.pause();audio.ontimeupdate=null;audio.currentTime=Math.min(oldTime||0,Number.isFinite(audio.duration)?audio.duration:0)}catch{}
