@@ -219,6 +219,28 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
      if(audio.seeking===false && audio.readyState>=2 && Math.abs(audio.currentTime-item.start)<0.25)finish();
     });
     await setupAudio();
+    // Preflight playback while still inside the export flow. This catches blocked
+    // playback before MediaRecorder starts, rather than leaving a silent/empty clip.
+    try {
+     await audio.play();
+     await new Promise((resolve,reject)=>{
+      if(!audio.paused && audio.readyState>=2){resolve();return;}
+      const timer=setTimeout(()=>{cleanup();reject(new Error("El audio no comenzó a reproducirse. Pulsa Reproducir una vez y vuelve a exportar."));},5000);
+      const playing=()=>{cleanup();resolve();};
+      const error=()=>{cleanup();reject(new Error("El navegador no pudo iniciar el audio para grabar."));};
+      function cleanup(){clearTimeout(timer);audio.removeEventListener("playing",playing);audio.removeEventListener("error",error);}
+      audio.addEventListener("playing",playing,{once:true});audio.addEventListener("error",error,{once:true});
+     });
+     audio.pause();
+     if(Math.abs(audio.currentTime-item.start)>0.05){
+      await new Promise((resolve,reject)=>{
+       const timer=setTimeout(()=>{cleanup();reject(new Error("No se pudo volver al inicio del clip después de comprobar el audio."));},5000);
+       const seeked=()=>{cleanup();resolve();};
+       function cleanup(){clearTimeout(timer);audio.removeEventListener("seeked",seeked);}
+       audio.addEventListener("seeked",seeked,{once:true});audio.currentTime=item.start;
+      });
+     }
+    } catch(preflightError) { throw preflightError; }
     const fps=Number($("#fps").value),compact=$("#quality").value==="compact";
     const canvasStream=canvas.captureStream(fps);
     const stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);
@@ -231,7 +253,14 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
      recorder.addEventListener("error",e=>{clearTimeout(watchdog);reject(new Error("MediaRecorder falló: "+(e.error?.message||"error desconocido")))},{once:true});
     });
     recorder.start(250);status(`GRABANDO CLIP ${done+1}/${total}`);msg.textContent=`Grabando video en tiempo real: ${item.name} (${targetFormat==="portrait"?"9:16":"16:9"})…`;
-    await audio.play();
+    try { await audio.play(); }
+    catch(playError) {
+     if(recorder.state!=="inactive")recorder.stop();
+     try { await stopped; } catch {}
+     canvasStream.getTracks().forEach(t=>t.stop());
+     stream.getTracks().forEach(t=>t.stop());
+     throw new Error("No se pudo iniciar la reproducción durante la grabación: "+(playError?.message||playError));
+    }
     await new Promise((resolve,reject)=>{
      let finished=false;
      const cleanup=()=>{clearInterval(poll);clearTimeout(timeout);audio.removeEventListener("timeupdate",tick);audio.removeEventListener("error",onError)};

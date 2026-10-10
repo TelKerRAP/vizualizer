@@ -77,6 +77,12 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - Prueba sugerida: un clip de 5–10 segundos, un solo formato. Esta entrega no se declara probada en navegador real; los mensajes ahora ayudarán a identificar el siguiente punto de fallo.
 
 
+## v3.0.4 — Validación de reproducción antes de grabar
+- Comprueba que el audio pueda reproducirse antes de iniciar MediaRecorder, para evitar que un bloqueo de reproducción deje una exportación vacía.
+- Si falla la reproducción al iniciar la grabación, detiene el grabador y libera las pistas de captura.
+- Se conserva el fallback WebM de v3.0.3; MP4 sigue dependiendo de FFmpeg.wasm y conexión a CDN.
+- Sintaxis JavaScript validada con Node.js; la exportación real debe probarse en Chrome/Edge.
+
 ## v3.0.3 — Grabación primero, conversión después
 - Diagnóstico de los archivos compartidos por el usuario: el exportador cargaba FFmpeg antes de iniciar la grabación de cualquier clip. Si la importación/CDN/WASM fallaba, no se generaba ningún video.
 - Ahora graba primero el fragmento en WebM con MediaRecorder; solo después intenta convertirlo a MP4.
