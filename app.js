@@ -194,13 +194,11 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
  if(!formats.length){alert("Selecciona al menos un formato de salida.");return}
  if(!window.MediaRecorder||!canvas.captureStream){alert("Usa Chrome o Edge actualizado para exportar clips.");return}
  const btn=$("#exportClipsBtn"),msg=$("#clipsExportMessage"),bar=$("#clipsProgressBar"),downloadRoot=$("#clipDownloads");
- let ff=null;const outputs=[];clipExporting=true;recording=true;btn.disabled=true;downloadRoot.innerHTML="";$("#clipsZipLink").hidden=true;bar.style.width="0%";
+ let ff=null,fetchFileFn=null,ffmpegUnavailable=false;const outputs=[];clipExporting=true;recording=true;btn.disabled=true;downloadRoot.innerHTML="";$("#clipsZipLink").hidden=true;bar.style.width="0%";
  const oldFormat=format,oldTime=audio.currentTime,oldPaused=audio.paused;
  try{
   await setupAudio();
-  msg.textContent="Preparando el motor de exportación… Si es la primera vez, puede tardar un poco en cargar FFmpeg.";
-  ff=await loadFFmpeg();
-  const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");
+  msg.textContent="Primero se grabará cada clip como video WebM. Después se intentará convertir a MP4; si FFmpeg no carga, se conservará el video WebM descargable.";
   const total=selected.length*formats.length;let done=0;
   for(const item of selected){
    for(const targetFormat of formats){
@@ -250,31 +248,54 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
     await stopped;canvasStream.getTracks().forEach(t=>t.stop());stream.getTracks().forEach(t=>{if(t.kind==="video")t.stop()});
     const webm=new Blob(chunks,{type:"video/webm"});if(!webm.size)throw new Error(`El clip "${item.name}" quedó vacío.`);
     const inputName="xz_clip_input.webm",outputName="xz_clip_output.mp4";
-    try{await ff.deleteFile(inputName)}catch{}
-    try{await ff.deleteFile(outputName)}catch{}
-    await ff.writeFile(inputName,await fetchFile(webm));
-    const args=["-i",inputName,"-t",(item.end-item.start).toFixed(3)];
-    if(compact)args.push("-vf",targetFormat==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");
-    args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","-f","mp4",outputName);
-    await ff.exec(args);
-    const data=await ff.readFile(outputName),blob=new Blob([data.buffer],{type:"video/mp4"});
-    if(blob.size<1024)throw new Error(`FFmpeg no generó un MP4 válido para "${item.name}".`);
+    let blob=webm,extension="webm",conversionNote="WebM";
+    // Do not make video recording depend on FFmpeg/CDN availability.
+    // Attempt MP4 conversion only after a non-empty video has already been recorded.
+    if(!ffmpegUnavailable){
+     try{
+      if(!ff){msg.textContent="Video grabado. Cargando convertidor MP4…";ff=await loadFFmpeg();fetchFileFn=(await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js")).fetchFile;}
+      try{await ff.deleteFile(inputName)}catch{}
+      try{await ff.deleteFile(outputName)}catch{}
+      await ff.writeFile(inputName,await fetchFileFn(webm));
+      const args=["-i",inputName,"-t",(item.end-item.start).toFixed(3)];
+      if(compact)args.push("-vf",targetFormat==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");
+      args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","-f","mp4",outputName);
+      await ff.exec(args);
+      const data=await ff.readFile(outputName),mp4Blob=new Blob([data.buffer],{type:"video/mp4"});
+      if(mp4Blob.size<1024)throw new Error("FFmpeg generó un archivo demasiado pequeño.");
+      blob=mp4Blob;extension="mp4";conversionNote="MP4";
+      try{await ff.deleteFile(inputName)}catch{}
+      try{await ff.deleteFile(outputName)}catch{}
+     }catch(convertErr){
+      console.error("Conversión MP4 falló; se conserva WebM:",convertErr);
+      if(!ff){ffmpegUnavailable=true;}
+      else if(/failed to fetch|network|import|load|fetch/i.test(String(convertErr?.message||convertErr)))ffmpegUnavailable=true;
+      msg.textContent="No se pudo convertir a MP4 ("+(convertErr?.message||convertErr)+"). El video ya está grabado; se entregará en WebM para no perderlo.";
+      try{if(ff){await ff.deleteFile(inputName)} }catch{}
+      try{if(ff){await ff.deleteFile(outputName)} }catch{}
+     }
+    }
     const safeName=item.name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9_-]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||`clip-${item.id}`;
-    const fileName=`XZ-${safeName}-${targetFormat==="portrait"?"9x16":"16x9"}.mp4`;
+    const fileName=`XZ-${safeName}-${targetFormat==="portrait"?"9x16":"16x9"}.${extension}`;
     outputs.push({name:fileName,blob});
     const url=URL.createObjectURL(blob);clipBlobUrls.push(url);
-    const a=document.createElement("a");a.href=url;a.download=fileName;a.textContent=`⬇ ${fileName} (${(blob.size/1048576).toFixed(1)} MB)`;downloadRoot.appendChild(a);
-    try{await ff.deleteFile(inputName)}catch{}try{await ff.deleteFile(outputName)}catch{}
+    const a=document.createElement("a");a.href=url;a.download=fileName;a.textContent=`⬇ ${fileName} · ${conversionNote} (${(blob.size/1048576).toFixed(1)} MB)`;downloadRoot.appendChild(a);
     done++;bar.style.width=`${Math.round(done/total*90)}%`;
    }
   }
-  msg.textContent=`Los MP4 se generaron (${outputs.length}). Empaquetando en ZIP…`;
-  const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
-  const zip=new JSZip();outputs.forEach(o=>zip.file(o.name,o.blob));
-  const zipBlob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:1}},meta=>{bar.style.width=`${90+Math.round(meta.percent*.1)}%`});
-  const zipUrl=URL.createObjectURL(zipBlob);clipBlobUrls.push(zipUrl);
-  const zipLink=$("#clipsZipLink");zipLink.href=zipUrl;zipLink.download="XZ-Clip-Generator-clips.zip";zipLink.textContent=`⬇ Descargar todos los clips en ZIP (${(zipBlob.size/1048576).toFixed(1)} MB)`;zipLink.hidden=false;
-  bar.style.width="100%";msg.textContent=`Exportación completada: ${outputs.length} MP4 generados y añadidos al ZIP.`;status("CLIPS EXPORTADOS");
+  msg.textContent=`Videos grabados (${outputs.length}). Creando ZIP…`;
+  try{
+   const JSZip=(await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")).default;
+   const zip=new JSZip();outputs.forEach(o=>zip.file(o.name,o.blob));
+   const zipBlob=await zip.generateAsync({type:"blob",compression:"DEFLATE",compressionOptions:{level:1}},meta=>{bar.style.width=`${90+Math.round(meta.percent*.1)}%`});
+   const zipUrl=URL.createObjectURL(zipBlob);clipBlobUrls.push(zipUrl);
+   const zipLink=$("#clipsZipLink");zipLink.href=zipUrl;zipLink.download="XZ-Clip-Generator-clips.zip";zipLink.textContent=`⬇ Descargar todos los clips en ZIP (${(zipBlob.size/1048576).toFixed(1)} MB)`;zipLink.hidden=false;
+   bar.style.width="100%";msg.textContent=`Listo: ${outputs.length} video(s) generado(s). Los que se convirtieron están en MP4; si FFmpeg falló, el archivo individual/ZIP contiene WebM. Descarga los archivos de abajo.`;status("CLIPS GENERADOS");
+  }catch(zipErr){
+   console.error("ZIP no disponible:",zipErr);
+   msg.textContent=`Se generaron ${outputs.length} video(s) y aparecen como enlaces individuales, pero no se pudo crear el ZIP: ${zipErr?.message||zipErr}.`;
+   status("VIDEOS GENERADOS");
+  }
  }catch(err){
   console.error(err);msg.textContent="ERROR EN EXPORTACIÓN: "+(err?.message||err)+". Revisa si el fallo ocurrió al cargar FFmpeg, grabar el WebM, convertir a MP4 o empaquetar el ZIP. Prueba primero un clip de 5–10 s en un solo formato.";
   status("ERROR EN CLIPS");

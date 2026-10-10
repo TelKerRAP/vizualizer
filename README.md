@@ -75,3 +75,11 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - Añade límites de espera para la búsqueda y el cierre de MediaRecorder, para mostrar un error concreto en lugar de quedarse bloqueado.
 - La conversión FFmpeg especifica el formato de salida MP4 y presenta mensajes de progreso por etapa.
 - Prueba sugerida: un clip de 5–10 segundos, un solo formato. Esta entrega no se declara probada en navegador real; los mensajes ahora ayudarán a identificar el siguiente punto de fallo.
+
+
+## v3.0.3 — Grabación primero, conversión después
+- Diagnóstico de los archivos compartidos por el usuario: el exportador cargaba FFmpeg antes de iniciar la grabación de cualquier clip. Si la importación/CDN/WASM fallaba, no se generaba ningún video.
+- Ahora graba primero el fragmento en WebM con MediaRecorder; solo después intenta convertirlo a MP4.
+- Si FFmpeg no carga o falla la conversión, conserva el WebM ya grabado y muestra un enlace de descarga en vez de descartar el video.
+- El ZIP incluye cada archivo generado con su extensión real (.mp4 o .webm). Si falla la librería ZIP, mantiene disponibles los enlaces individuales.
+- Se validó la sintaxis con Node.js. No se pudo validar la reproducción/exportación en navegador en este entorno; prueba un clip de 5 segundos primero.
