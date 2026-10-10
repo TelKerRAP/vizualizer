@@ -35,3 +35,10 @@ Formatos admitidos:
 - `01:12.5 | Texto de la línea` (minutos:segundos)
 
 Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca temporal hasta la siguiente y se dibujan sobre la viñeta para mejorar el contraste. La sincronización sigue siendo manual; no incluye transcripción automática.
+
+
+## Corrección de sincronización de letras (v2.0.2)
+- El módulo acepta ahora el formato LRC estándar: `[00:12.50] Texto`.
+- También acepta `00:12.50 | Texto` y `12.5 | Texto`.
+- Incluye un control de desfase de -10 a +10 segundos para corregir letras que entran antes o después.
+- Para sincronización precisa, los tiempos de cada línea deben corresponder al momento real en que se canta. El control de desfase corrige un desplazamiento global, no errores distintos entre líneas.

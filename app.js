@@ -31,7 +31,7 @@ function drawSpectrum(data,bass,time){if(!$("#showSpectrum").checked)return;cons
 function drawText(){if(!$("#showText").checked)return;const w=canvas.width,h=canvas.height,min=Math.min(w,h),y=format==="portrait"?h*.72:h*.82;ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";ctx.shadowBlur=18*glow;ctx.shadowColor=palette.accent;ctx.fillStyle="#fff4ff";ctx.font=`900 ${Math.round(min*(format==="portrait"?.05:.06))}px Arial`;ctx.fillText($("#songTitle").value.toUpperCase(),w/2,y,w*.84);ctx.shadowBlur=10*glow;ctx.fillStyle="#a9f7ff";ctx.font=`600 ${Math.round(min*.022)}px Arial`;ctx.fillText($("#artistName").value.toUpperCase(),w/2,y+min*.055,w*.75);ctx.restore()}
 function drawLyrics(){
  if(!lyrics.length || !Number.isFinite(audio.currentTime)) return;
- const t=audio.currentTime; let index=-1;
+ const offset=Number($("#lyricsOffset")?.value||0); const t=audio.currentTime-offset; let index=-1;
  for(let i=0;i<lyrics.length;i++){if(t>=lyrics[i].time)index=i;else break}
  if(index<0)return;
  const line=lyrics[index], next=lyrics[index+1];
@@ -60,23 +60,36 @@ $("#preset").addEventListener("change",e=>{palette=palettes[e.target.value]||pal
 function range(id,out,fmt,fn){$("#"+id).addEventListener("input",e=>{const v=+e.target.value;$("#"+out).textContent=fmt(v);fn(v)})}
 range("intensity","intensityOut",v=>v+"%",v=>intensity=v/100);range("glow","glowOut",v=>v+"%",v=>glow=v/100);range("particles","particlesOut",v=>v,v=>{particleCount=v;seedParticles()});
 function parseLyricTime(raw){
- const value=raw.trim();
+ const value=raw.trim().replace(/^\[|\]$/g,"");
  if(/^\d+(?:\.\d+)?$/.test(value))return Number(value);
- const m=value.match(/^(\d{1,2}):([0-5]?\d(?:\.\d+)?)$/);
+ const m=value.match(/^(\d{1,3}):([0-5]?\d(?:\.\d+)?)$/);
  return m?Number(m[1])*60+Number(m[2]):NaN;
 }
+function parseLyricRow(row){
+ // Standard LRC: [mm:ss.xx] lyric
+ let m=row.match(/^\[(\d{1,3}:[0-5]?\d(?:\.\d+)?)\]\s*(.+)$/);
+ if(m)return {time:parseLyricTime(m[1]),text:m[2].trim()};
+ // Custom: timestamp | lyric (also accepts semicolon)
+ m=row.match(/^(\d{1,3}:[0-5]?\d(?:\.\d+)?|\d+(?:\.\d+)?)\s*[|;]\s*(.+)$/);
+ if(m)return {time:parseLyricTime(m[1]),text:m[2].trim()};
+ // Legacy format with a hyphen delimiter, only when it clearly follows a timestamp.
+ m=row.match(/^(\d{1,3}:[0-5]?\d(?:\.\d+)?|\d+(?:\.\d+)?)\s+-\s+(.+)$/);
+ if(m)return {time:parseLyricTime(m[1]),text:m[2].trim()};
+ return null;
+}
+$("#lyricsOffset").addEventListener("input",e=>{
+ $("#lyricsOffsetOut").textContent=`${Number(e.target.value)>0?"+":""}${Number(e.target.value).toFixed(1)} s`;
+});
 $("#applyLyrics").addEventListener("click",()=>{
  const rows=$("#lyrics").value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),parsed=[],invalid=[];
  for(const row of rows){
-  const m=row.match(/^(\d{1,2}:\d{1,2}(?:\.\d+)?|\d+(?:\.\d+)?)\s*[|;,-]\s*(.+)$/);
-  if(!m){invalid.push(row);continue}
-  const time=parseLyricTime(m[1]),text=m[2].trim();
-  if(Number.isFinite(time)&&text)parsed.push({time,text});else invalid.push(row);
+  const item=parseLyricRow(row);
+  if(item&&Number.isFinite(item.time)&&item.text)parsed.push(item);else invalid.push(row);
  }
  lyrics=parsed.sort((a,b)=>a.time-b.time);
  $("#lyricsStatus").textContent=lyrics.length
- ? `${lyrics.length} líneas cargadas${invalid.length?`; ${invalid.length} línea(s) con formato incorrecto ignorada(s)`:''}.`
- : "No se detectaron líneas. Usa: 12.5 | Texto o 01:12.5 | Texto";
+ ? `${lyrics.length} líneas cargadas${invalid.length?`; ${invalid.length} línea(s) no reconocidas`:''}.`
+ : "No se detectaron líneas. Usa [01:12.50] Texto, 01:12.5 | Texto o 72.5 | Texto.";
 });
 async function loadFFmpeg(){const {FFmpeg}=await import("https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");const {toBlobURL}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");const ff=new FFmpeg();ff.on("progress",({progress})=>{$("#progressBar").style.width=`${Math.min(99,Math.round(progress*100))}%`;$("#exportMessage").textContent=`Conversión MP4: ${Math.round(progress*100)}%`});const core="https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",wasm="https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm";await ff.load({coreURL:await toBlobURL(core,"text/javascript"),wasmURL:await toBlobURL(wasm,"application/wasm")});return ff}
 $("#exportBtn").addEventListener("click",async()=>{if(recording)return;if(!audio.src){$("#audioFile").click();return}if(!window.MediaRecorder||!canvas.captureStream){alert("Usa Chrome o Edge actualizado para grabar el canvas.");return}
