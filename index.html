@@ -2,14 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>XZ Audio Visualizer 3.1 · Inicio corregido</title><link rel="stylesheet" href="style.css">
+<title>XZ Audio Visualizer 3.1 · Fix reproducción</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="topbar"><div class="brand-mark">XZ</div><div><h1>XZ AUDIO VISUALIZER <span>3.1</span></h1><p>CINEMATIC AUDIO ENGINE · ANIME / CYBERPUNK</p></div><span class="status" id="status">LISTO</span></header>
 <main class="layout">
 <section class="stage-panel">
   <div class="stage-wrap"><canvas id="visualizer" width="1920" height="1080"></canvas><div class="stage-label">LIVE PREVIEW · AUDIO REACTIVE</div><div class="scene-label" id="sceneLabel">ESCENA 01 / AWAKENING</div></div>
-  <div class="transport"><button id="playBtn" class="primary">▶ Reproducir</button><button id="stopBtn">■ Detener</button><div class="track-name" id="trackName">Carga una canción para comenzar</div></div><audio id="audio"></audio>
+  <div class="transport"><button id="playBtn" class="primary">▶ Reproducir</button><button id="stopBtn">■ Detener</button><div class="track-name" id="trackName">Carga una canción para comenzar</div></div><audio id="audio" preload="auto"></audio>
 </section>
 <aside class="controls">
 <section class="control-card"><h2>01 / MEDIA</h2>

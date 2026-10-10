@@ -73,9 +73,30 @@ audio.addEventListener("loadedmetadata",()=>{const d=Number.isFinite(audio.durat
 audio.addEventListener("error",()=>{const code=audio.error?.code;const reasons={1:"carga cancelada",2:"error de red",3:"formato/códec no compatible",4:"fuente no compatible"};status("ERROR DE AUDIO");$("#exportMessage").textContent="No se pudo cargar/reproducir el audio: "+(reasons[code]||"error de lectura")+". Prueba un MP3 o WAV compatible.";});
 window.addEventListener("error",e=>{console.error(e.error||e.message);const msg=$("#exportMessage");if(msg)msg.textContent="Error de la aplicación: "+(e.message||"revisa la consola del navegador");});
 window.addEventListener("unhandledrejection",e=>{console.error(e.reason);const msg=$("#exportMessage");if(msg)msg.textContent="Error de ejecución: "+(e.reason?.message||e.reason||"desconocido");});
-$("#audioFile").addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(f);audio.src=audioUrl;$("#trackName").textContent=f.name;$("#exportMessage").textContent="Audio cargado. La detección de beats se activa al reproducir.";status("AUDIO CARGADO")});
+$("#audioFile").addEventListener("change",e=>{
+ const f=e.target.files?.[0]; if(!f)return;
+ if(audioUrl)URL.revokeObjectURL(audioUrl);
+ audio.pause(); audio.removeAttribute("src"); audio.load();
+ audioUrl=URL.createObjectURL(f); audio.src=audioUrl; audio.preload="auto"; audio.load();
+ $("#trackName").textContent=f.name; $("#exportMessage").textContent="Cargando audio… espera a que se muestre la duración.";
+ status("CARGANDO AUDIO"); $("#playBtn").disabled=true;
+});
+audio.addEventListener("loadedmetadata",()=>{$("#playBtn").disabled=false;});
 $("#imageFile").addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=URL.createObjectURL(f);const im=new Image();im.onload=()=>image=im;im.src=imageUrl});
-$("#playBtn").addEventListener("click",async()=>{if(!audio.src){$("#audioFile").click();return}if(!audio.paused){audio.pause();$("#playBtn").textContent="▶ Reproducir";status("PAUSADO");return}try{try{await setupAudio()}catch(audioGraphError){console.warn("El análisis de audio no está disponible; se intentará reproducir directamente.",audioGraphError)}await audio.play();$("#playBtn").textContent="Ⅱ Pausar";status("REPRODUCIENDO")}catch(e){status("ERROR DE REPRODUCCIÓN");$("#exportMessage").textContent="No se pudo reproducir la canción: "+(e.message||e)+". Prueba un MP3 o WAV local y vuelve a cargarlo.";alert("No se pudo reproducir el audio: "+e.message)}});
+$("#playBtn").addEventListener("click",async()=>{
+ if(!audio.src){$("#audioFile").click();return}
+ if(!audio.paused){audio.pause();$("#playBtn").textContent="▶ Reproducir";status("PAUSADO");return}
+ try{
+   // Prioriza iniciar el audio nativo. El análisis visual es opcional y nunca debe bloquear Play.
+   await audio.play();
+   $("#playBtn").textContent="Ⅱ Pausar"; status("REPRODUCIENDO");
+   setupAudio().catch(err=>console.warn("Análisis de audio desactivado; la reproducción continúa sin análisis.",err));
+ }catch(e){
+   status("ERROR DE REPRODUCCIÓN");
+   $("#exportMessage").textContent="No se pudo reproducir la canción: "+(e.message||e)+". Verifica que el archivo sea un MP3/WAV válido y que haya terminado de cargar.";
+   console.error("Audio playback error:",e);
+ }
+});
 audio.addEventListener("ended",()=>{if(!recording)status("TERMINADO")});audio.addEventListener("pause",()=>{if(!recording)$("#playBtn").textContent="▶ Reproducir"});
 $("#stopBtn").addEventListener("click",()=>{audio.pause();audio.currentTime=0;$("#playBtn").textContent="▶ Reproducir";status("DETENIDO")});
 document.querySelectorAll(".format").forEach(b=>b.addEventListener("click",()=>{format=b.dataset.format;document.querySelectorAll(".format").forEach(x=>x.classList.toggle("active",x===b));resizeCanvas()}));
