@@ -9,3 +9,9 @@
 No necesitas añadir clips ni seleccionar una imagen. El fondo animado se genera automáticamente. La exportación graba en tiempo real; mantén la pestaña abierta. Si FFmpeg no está disponible, se ofrece el archivo WebM grabado.
 
 La sintaxis JavaScript debe validarse localmente; la exportación real requiere probarla en Chrome o Edge.
+
+
+## Escenas dinámicas basadas en el audio
+- Las escenas cambian usando el reloj de la canción y promedios de graves, medios y agudos detectados por Web Audio.
+- Cada escena tiene un tratamiento visual propio: anillos de pulso, lluvia de neón, glitches/scanlines y órbitas de luz.
+- La selección es heurística y reactiva a la energía/frecuencias; no identifica semánticamente versos, coros ni emociones como lo haría un modelo musical especializado.

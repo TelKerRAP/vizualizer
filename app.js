@@ -10,6 +10,7 @@ const palettes={
  fantasy:{name:"DARK FANTASY",hue:270,secondary:205,accent:"#a78bfa"}
 };
 const scenes=["AWAKENING","NEON RAIN","VOID HEART","AFTERGLOW"];
+let sceneEnergy=0, sceneBass=0, sceneMid=0, sceneHigh=0, sceneHoldUntil=0, lastSceneAudioTime=0;
 let palette=palettes.gothic;
 function status(t){$("#status").textContent=t}
 function resizeCanvas(){canvas.width=format==="landscape"?1920:1080;canvas.height=format==="landscape"?1080:1920;canvas.style.aspectRatio=format==="landscape"?"16/9":"9/16";seedParticles()}
@@ -25,6 +26,24 @@ function drawBg(bass,mid,time){const w=canvas.width,h=canvas.height;ctx.fillStyl
  const sy=(time*.025)%h;ctx.fillStyle=`hsla(${palette.hue},100%,70%,${.025*glow})`;ctx.fillRect(0,sy,w,Math.max(2,h*.0015));
  // Scene transition: soft chromatic flash on bass transients and periodic scene changes.
  if(beatFlash>.02){ctx.fillStyle=`hsla(${palette.secondary},100%,70%,${beatFlash*.12})`;ctx.fillRect(0,0,w,h);beatFlash*=.86}
+}
+function drawAudioScene(data,bass,mid,high,time){
+ const w=canvas.width,h=canvas.height,energy=(bass*.55+mid*.3+high*.15)/255;
+ // Each scene is an actual visual treatment, selected from the song's frequency/energy profile.
+ ctx.save();ctx.globalCompositeOperation="lighter";
+ if(sceneIndex===0){ // AWAKENING: expanding pulse rings, strongest on bass hits
+  const cx=w*.5,cy=h*.48,base=Math.min(w,h)*(.16+energy*.025);
+  for(let k=0;k<3;k++){const r=base+((time*.035+k*Math.min(w,h)*.12)%(Math.min(w,h)*.42));ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=`hsla(${palette.hue+k*18},100%,70%,${.12+energy*.12})`;ctx.lineWidth=Math.max(2,Math.min(w,h)*.002);ctx.stroke()}
+ }else if(sceneIndex===1){ // NEON RAIN: frequency-reactive falling streaks
+  for(let i=0;i<34;i++){const x=((i*7919+Math.sin(time*.001+i)*45)%w+w)%w;const y=((time*(.12+(high/255)*.5)+i*137)%(h+160))-80;ctx.strokeStyle=`hsla(${palette.secondary},100%,70%,${.12+(high/255)*.45})`;ctx.lineWidth=1+(high/255)*3;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-8,y+24+(mid/255)*60);ctx.stroke()}
+ }else if(sceneIndex===2){ // VOID HEART: distorted horizontal scan lines and brief beat glitches
+  const count=4+Math.round(mid/24);for(let i=0;i<count;i++){const y=((i*173+time*.04)%(h));const shift=(Math.sin(time*.01+i*3)*bass/255)*w*.025;ctx.fillStyle=`hsla(${palette.secondary},100%,65%,${.025+(mid/255)*.09})`;ctx.fillRect(shift,y,w*(.2+(i%4)*.17),Math.max(2,h*.002+(mid/255)*h*.004))}
+  if(beatFlash>.5){ctx.fillStyle=`hsla(${palette.secondary},100%,70%,${beatFlash*.07})`;ctx.fillRect(0,h*.2,w,h*.012);ctx.fillRect(0,h*.72,w,h*.008)}
+ }else{ // AFTERGLOW: soft orbiting light arcs, opens up on high frequencies
+  const cx=w*.5,cy=h*.48,r=Math.min(w,h)*(.24+(high/255)*.05);ctx.lineWidth=Math.max(3,Math.min(w,h)*(.004+(high/255)*.006));
+  for(let i=0;i<5;i++){ctx.beginPath();ctx.ellipse(cx,cy,r*(1+i*.12),r*(.55+i*.1),time*.00012*(i%2?1:-1),time*.001+i,time*.001+i+Math.PI*(1.1+high/255));ctx.strokeStyle=`hsla(${palette.hue+i*13},100%,75%,${.12+(high/255)*.25})`;ctx.stroke()}
+ }
+ ctx.restore();
 }
 function drawParticles(bass,time){ctx.save();ctx.globalCompositeOperation="lighter";for(const p of particles.slice(0,particleCount)){p.y-=p.s*(.45+bass/150)*intensity;p.x+=Math.sin(time*.0005+p.p)*.35;if(p.y<0){p.y=canvas.height+5;p.x=Math.random()*canvas.width}ctx.beginPath();ctx.arc(p.x,p.y,p.r+(bass/255)*2,0,Math.PI*2);ctx.fillStyle=`hsla(${palette.hue+Math.sin(p.p)*25},100%,70%,${Math.min(1,p.a*(.5+bass/300))*.55})`;ctx.shadowBlur=12*glow;ctx.shadowColor=palette.accent;ctx.fill()}ctx.restore()}
 function drawSpectrum(data,bass,time){if(!$("#showSpectrum").checked)return;const w=canvas.width,h=canvas.height,cx=w*.5,cy=h*(format==="portrait"?.48:.51),base=Math.min(w,h)*(format==="portrait"?.145:.19);ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation="lighter";for(let i=0;i<144;i++){const v=data[Math.floor(i*data.length/144)]/255,ang=i/144*Math.PI*2-Math.PI/2,len=(10+v*base*.7)*intensity;ctx.beginPath();ctx.moveTo(Math.cos(ang)*base,Math.sin(ang)*base);ctx.lineTo(Math.cos(ang)*(base+len+beatFlash*base*.18),Math.sin(ang)*(base+len+beatFlash*base*.18));ctx.strokeStyle=`hsla(${palette.hue+(i/144)*70},100%,${60+v*25}%,${.4+v*.6})`;ctx.lineWidth=Math.max(2,Math.min(w,h)*.0025);ctx.shadowBlur=glow*22;ctx.shadowColor=palette.accent;ctx.stroke()}ctx.beginPath();ctx.arc(0,0,base-2,0,Math.PI*2);ctx.strokeStyle=`hsla(${palette.secondary},100%,70%,.5)`;ctx.lineWidth=2;ctx.stroke();ctx.restore()}
@@ -47,14 +66,29 @@ function drawLyrics(){
  ctx.fillText(line.text,w/2,y,w*.88);ctx.restore();
 }
 function drawVignette(){const w=canvas.width,h=canvas.height,g=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*.18,w/2,h/2,Math.max(w,h)*.72);g.addColorStop(0,"transparent");g.addColorStop(1,"rgba(0,0,0,.65)");ctx.fillStyle=g;ctx.fillRect(0,0,w,h)}
-function render(time=0){requestAnimationFrame(render);const d=frequencyData(),bass=average(d,0,14),mid=average(d,14,100);if(bass>previousBass+18&&bass>65){beatFlash=1;lastBeat=time}previousBass=bass;
- if($("#autoScenes").checked&&time-lastSceneChange>18000){sceneIndex=(sceneIndex+1)%scenes.length;lastSceneChange=time;$("#sceneLabel").textContent=`ESCENA 0${sceneIndex+1} / ${scenes[sceneIndex]}`}
- drawBg(bass,mid,time);drawParticles(bass,time);drawSpectrum(d,bass,time);drawText();drawVignette();drawLyrics()}
+function render(time=0){requestAnimationFrame(render);const d=frequencyData(),bass=average(d,0,14),mid=average(d,14,100),high=average(d,100,Math.min(260,d.length));
+ const energy=(bass*.55+mid*.30+high*.15)/255;sceneEnergy=sceneEnergy*.9+energy*.1;sceneBass=sceneBass*.88+bass*.12;sceneMid=sceneMid*.88+mid*.12;sceneHigh=sceneHigh*.88+high*.12;
+ if(bass>previousBass+18&&bass>65){beatFlash=1;lastBeat=time}previousBass=bass;
+ // Scene changes follow the audio timeline and sustained musical energy, not page uptime.
+ const audioClock=audio.currentTime||0,elapsed=audioClock-lastSceneAudioTime;
+ if(audioClock<lastSceneAudioTime){sceneHoldUntil=audioClock+7;}
+ if($("#autoScenes").checked&&audioClock>=sceneHoldUntil&&elapsed>=7&&audioClock-lastSceneChange>=8){
+   let next=sceneIndex;
+   if(sceneEnergy>.48||sceneBass>115)next=0; // powerful low-end: Awakening
+   else if(sceneHigh>75)next=1; // bright/high-frequency sections: Neon Rain
+   else if(sceneMid>65)next=2; // dense midrange: Void Heart
+   else next=3; // quieter/open sections: Afterglow
+   if(next===sceneIndex)next=(sceneIndex+1)%scenes.length;
+   sceneIndex=next;lastSceneChange=audioClock;sceneHoldUntil=audioClock+7;
+   $("#sceneLabel").textContent=`ESCENA 0${sceneIndex+1} / ${scenes[sceneIndex]}`;
+ }
+ lastSceneAudioTime=audioClock;
+ drawBg(bass,mid,time);drawAudioScene(d,sceneBass,sceneMid,sceneHigh,time);drawParticles(bass,time);drawSpectrum(d,bass,time);drawText();drawVignette();drawLyrics()}
 $("#audioFile").addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(f);audio.src=audioUrl;$("#trackName").textContent=f.name;$("#exportMessage").textContent="Audio cargado. La detección de beats se activa al reproducir.";status("AUDIO CARGADO")});
 $("#imageFile").addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=URL.createObjectURL(f);const im=new Image();im.onload=()=>image=im;im.src=imageUrl});
-$("#playBtn").addEventListener("click",async()=>{if(!audio.src){$("#audioFile").click();return}try{await setupAudio();if(audio.paused){await audio.play();$("#playBtn").textContent="Ⅱ Pausar";status("REPRODUCIENDO")}else{audio.pause();$("#playBtn").textContent="▶ Reproducir";status("PAUSADO")}}catch(e){alert("No se pudo reproducir el audio: "+e.message)}});
-audio.addEventListener("ended",()=>{if(!recording)status("TERMINADO")});audio.addEventListener("pause",()=>{if(!recording)$("#playBtn").textContent="▶ Reproducir"});
-$("#stopBtn").addEventListener("click",()=>{audio.pause();audio.currentTime=0;$("#playBtn").textContent="▶ Reproducir";status("DETENIDO")});
+$("#playBtn").addEventListener("click",()=>{$("#exportBtn").click()});
+audio.addEventListener("ended",()=>{if(!recording)status("TERMINADO")});audio.addEventListener("pause",()=>{});
+$("#stopBtn").addEventListener("click",()=>{audio.pause();audio.currentTime=0;$("#playBtn").textContent="▶ Generar video de la canción completa";status("DETENIDO")});
 document.querySelectorAll(".format").forEach(b=>b.addEventListener("click",()=>{format=b.dataset.format;document.querySelectorAll(".format").forEach(x=>x.classList.toggle("active",x===b));resizeCanvas()}));
 $("#preset").addEventListener("change",e=>{palette=palettes[e.target.value]||palettes.gothic;document.documentElement.style.setProperty("--pink",palette.accent);});
 function range(id,out,fmt,fn){$("#"+id).addEventListener("input",e=>{const v=+e.target.value;$("#"+out).textContent=fmt(v);fn(v)})}
@@ -332,7 +366,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
   try{audio.pause();audio.ontimeupdate=null;audio.currentTime=Math.min(oldTime||0,Number.isFinite(audio.duration)?audio.duration:0)}catch{}
   format=oldFormat;resizeCanvas();recording=false;clipExporting=false;btn.disabled=false;
   if(!oldPaused&&audio.src){/* Keep transport state predictable; don't resume after batch export. */}
-  $("#playBtn").textContent="▶ Reproducir";
+  $("#playBtn").textContent="▶ Generar video de la canción completa";
   if(ff){try{ff.terminate()}catch{}}
  }
 });
