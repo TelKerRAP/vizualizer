@@ -70,7 +70,7 @@ function drawClipList(){const list=$("#videoClipsList");if(!list)return;if(!vide
 $("#videoClipsFile")?.addEventListener("change",e=>{const files=[...(e.target.files||[])].filter(f=>f.type.startsWith('video/'));for(const file of files){const url=URL.createObjectURL(file),video=document.createElement('video');video.src=url;video.muted=true;video.loop=true;video.playsInline=true;video.preload='auto';videoClips.push({file,url,video});}activeVideoIndex=videoClips.length?0:-1;drawClipList();const label=$("#videoClipsStatus");if(label)label.textContent=`${videoClips.length} clips listos. Se alternarán automáticamente al detectar golpes musicales; el audio final será la canción cargada.`;if(videoClips[0]&&audio&&!audio.paused)videoClips[0].video.play().catch(()=>{});e.target.value='';});
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 audio.addEventListener("loadedmetadata",()=>{const d=Number.isFinite(audio.duration)?fmtTime(audio.duration):"duración desconocida";$("#exportMessage").textContent=`Audio listo (${d}). Pulsa Reproducir para comprobarlo.`;});
-audio.addEventListener("error",()=>{const code=audio.error?.code;const reasons={1:"carga cancelada",2:"error de red",3:"formato/códec no compatible",4:"fuente no compatible"};status("ERROR DE AUDIO");$("#exportMessage").textContent="No se pudo cargar/reproducir el audio: "+(reasons[code]||"error de lectura")+". Prueba un MP3 o WAV compatible.";});
+audio.addEventListener("error",()=>{$("#playBtn").disabled=false;const code=audio.error?.code;const reasons={1:"carga cancelada",2:"error de red",3:"formato/códec no compatible",4:"fuente no compatible"};status("ERROR DE AUDIO");$("#exportMessage").textContent="No se pudo cargar/reproducir el audio: "+(reasons[code]||"error de lectura")+". Prueba un MP3 o WAV compatible.";});
 window.addEventListener("error",e=>{console.error(e.error||e.message);const msg=$("#exportMessage");if(msg)msg.textContent="Error de la aplicación: "+(e.message||"revisa la consola del navegador");});
 window.addEventListener("unhandledrejection",e=>{console.error(e.reason);const msg=$("#exportMessage");if(msg)msg.textContent="Error de ejecución: "+(e.reason?.message||e.reason||"desconocido");});
 $("#audioFile").addEventListener("change",e=>{
@@ -87,13 +87,14 @@ $("#playBtn").addEventListener("click",async()=>{
  if(!audio.src){$("#audioFile").click();return}
  if(!audio.paused){audio.pause();$("#playBtn").textContent="▶ Reproducir";status("PAUSADO");return}
  try{
-   // Prioriza iniciar el audio nativo. El análisis visual es opcional y nunca debe bloquear Play.
+   // La reproducción normal usa el elemento HTMLAudio directamente.
+   // No crear MediaElementSource aquí: algunos navegadores pueden silenciarlo
+   // si falla la inicialización del grafo Web Audio.
    await audio.play();
    $("#playBtn").textContent="Ⅱ Pausar"; status("REPRODUCIENDO");
-   setupAudio().catch(err=>console.warn("Análisis de audio desactivado; la reproducción continúa sin análisis.",err));
  }catch(e){
    status("ERROR DE REPRODUCCIÓN");
-   $("#exportMessage").textContent="No se pudo reproducir la canción: "+(e.message||e)+". Verifica que el archivo sea un MP3/WAV válido y que haya terminado de cargar.";
+   $("#exportMessage").textContent="No se pudo reproducir la canción: "+(e.message||e)+". Verifica que el archivo sea un MP3, WAV u OGG válido.";
    console.error("Audio playback error:",e);
  }
 });
