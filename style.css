@@ -31,3 +31,5 @@
 .clip-downloads a,.zip-download{display:block;padding:9px;border:1px solid #76518a;border-radius:8px;overflow-wrap:anywhere}
 #clipsProgressBar{height:100%;width:0;background:linear-gradient(90deg,#9b4dff,#ff3fbf);transition:width .15s}
 @media(max-width:600px){.clip-input-grid{grid-template-columns:1fr}}
+
+.uploaded-video-list{display:grid;gap:7px;margin-top:10px}.uploaded-clip{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px;background:#0b0911;border:1px solid #3a2b46;border-radius:6px;font-size:11px}.uploaded-clip span{overflow-wrap:anywhere}.uploaded-clip button{flex-shrink:0;padding:6px 9px;color:#ff9ddc}

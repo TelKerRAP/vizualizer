@@ -1,17 +1,22 @@
-# XZ Audio Visualizer — Audio solo / video completo
+# XZ Audio Visualizer 3.1 — Montaje automático de videoclip
+
+## Funcionalidad añadida
+- Carga una canción (MP3/WAV/OGG) como audio principal.
+- Añade varios clips de video (formatos que admita el navegador, como MP4 o WebM).
+- Alterna los clips automáticamente con detección básica de golpes musicales y un corte de respaldo periódico.
+- Al cargar clips, el canvas muestra únicamente el video, sin espectro, partículas, títulos ni letras superpuestas.
+- Exporta la duración completa de la canción a 1080p/30 FPS por defecto, usando la grabación del navegador.
+- Intenta convertir el WebM grabado a MP4 mediante FFmpeg.wasm; si la conversión no está disponible, conserva un WebM descargable.
 
 ## Uso
-1. Abre este proyecto con VS Code y Live Server.
-2. Selecciona un archivo de audio.
-3. Pulsa el botón principal **Generar video de la canción completa**.
-4. Espera a que termine la canción y la preparación del archivo. Descarga el video desde el enlace que aparece.
+1. Abre `index.html` en un servidor local o publica la carpeta en tu hosting. Para módulos ES y FFmpeg, se recomienda un servidor local/HTTPS.
+2. Carga la canción.
+3. Selecciona varios clips de video.
+4. Elige `Estándar · 1080p` y `30 FPS`.
+5. Pulsa `Generar video de la canción completa` y espera a que aparezca el enlace de descarga. Mantén la pestaña abierta y evita bloquear el equipo.
 
-No necesitas añadir clips ni seleccionar una imagen. El fondo animado se genera automáticamente. La exportación graba en tiempo real; mantén la pestaña abierta. Si FFmpeg no está disponible, se ofrece el archivo WebM grabado.
-
-La sintaxis JavaScript debe validarse localmente; la exportación real requiere probarla en Chrome o Edge.
-
-
-## Escenas dinámicas basadas en el audio
-- Las escenas cambian usando el reloj de la canción y promedios de graves, medios y agudos detectados por Web Audio.
-- Cada escena tiene un tratamiento visual propio: anillos de pulso, lluvia de neón, glitches/scanlines y órbitas de luz.
-- La selección es heurística y reactiva a la energía/frecuencias; no identifica semánticamente versos, coros ni emociones como lo haría un modelo musical especializado.
+## Límites conocidos
+- La selección de cortes es heurística y usa los picos de graves detectados durante la reproducción, con un corte de respaldo; no es una edición semántica basada en escenas o letra.
+- El renderizado ocurre en tiempo real en el navegador: una canción de 4 minutos tarda aproximadamente 4 minutos o más en grabarse, además del tiempo de conversión.
+- La conversión MP4 depende de que el navegador pueda descargar y cargar FFmpeg.wasm. Si falla, el sistema intenta conservar un archivo WebM.
+- No se ha validado aún en todas las versiones de navegador ni con todos los códecs de video.

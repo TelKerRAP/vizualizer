@@ -3,6 +3,7 @@ const canvas=$("#visualizer"), ctx=canvas.getContext("2d",{alpha:false}), audio=
 let audioContext, analyser, sourceNode, mediaDestination, image=null, imageUrl=null, audioUrl=null;
 let format="landscape", intensity=.75, glow=.7, particleCount=90, particles=[], recording=false, clipExporting=false, clipItems=[], clipId=0, clipBlobUrls=[];
 let lyrics=[], lastBeat=0, beatFlash=0, previousBass=0, sceneIndex=0, sceneStarted=0, lastSceneChange=0;
+let videoClips=[], activeVideoIndex=-1, lastVideoCut=0, videoCutCount=0;
 const palettes={
  gothic:{name:"GOTHIC",hue:292,secondary:326,accent:"#ff3fbf"},
  cyberpunk:{name:"CYBERPUNK",hue:185,secondary:300,accent:"#64eaff"},
@@ -10,7 +11,6 @@ const palettes={
  fantasy:{name:"DARK FANTASY",hue:270,secondary:205,accent:"#a78bfa"}
 };
 const scenes=["AWAKENING","NEON RAIN","VOID HEART","AFTERGLOW"];
-let sceneEnergy=0, sceneBass=0, sceneMid=0, sceneHigh=0, sceneHoldUntil=0, lastSceneAudioTime=0;
 let palette=palettes.gothic;
 function status(t){$("#status").textContent=t}
 function resizeCanvas(){canvas.width=format==="landscape"?1920:1080;canvas.height=format==="landscape"?1080:1920;canvas.style.aspectRatio=format==="landscape"?"16/9":"9/16";seedParticles()}
@@ -19,6 +19,12 @@ function setupAudio(){if(audioContext){if(audioContext.state==="suspended")audio
 function frequencyData(){const d=new Uint8Array(analyser?.frequencyBinCount||1024);if(analyser)analyser.getByteFrequencyData(d);return d}
 function average(data,a,b){let s=0,n=0;for(let i=a;i<Math.min(b,data.length);i++){s+=data[i];n++}return n?s/n:0}
 function drawBg(bass,mid,time){const w=canvas.width,h=canvas.height;ctx.fillStyle="#06040b";ctx.fillRect(0,0,w,h);
+ // When source clips are loaded, render clean cinematic footage only (no visualizer overlays).
+ if(videoClips.length){
+  const clip=videoClips[Math.max(0,activeVideoIndex)];
+  if(clip && clip.video.readyState>=2){const v=clip.video, scale=Math.max(w/v.videoWidth,h/v.videoHeight), iw=v.videoWidth*scale, ih=v.videoHeight*scale;ctx.drawImage(v,(w-iw)/2,(h-ih)/2,iw,ih);}
+  return;
+ }
  if(image){const scale=Math.max(w/image.width,h/image.height),zoom=1+(bass/255)*intensity*.09;const iw=image.width*scale*zoom,ih=image.height*scale*zoom;ctx.drawImage(image,(w-iw)/2,(h-ih)/2,iw,ih)}
  else{const g=ctx.createRadialGradient(w*.5,h*.45,5,w*.5,h*.45,Math.max(w,h)*.75);g.addColorStop(0,`hsl(${palette.hue} 60% 19%)`);g.addColorStop(.65,"#100a1b");g.addColorStop(1,"#030208");ctx.fillStyle=g;ctx.fillRect(0,0,w,h)}
  const shade=ctx.createLinearGradient(0,0,0,h);shade.addColorStop(0,"#05020a99");shade.addColorStop(.5,"#08030a20");shade.addColorStop(1,"#05020add");ctx.fillStyle=shade;ctx.fillRect(0,0,w,h);
@@ -26,24 +32,6 @@ function drawBg(bass,mid,time){const w=canvas.width,h=canvas.height;ctx.fillStyl
  const sy=(time*.025)%h;ctx.fillStyle=`hsla(${palette.hue},100%,70%,${.025*glow})`;ctx.fillRect(0,sy,w,Math.max(2,h*.0015));
  // Scene transition: soft chromatic flash on bass transients and periodic scene changes.
  if(beatFlash>.02){ctx.fillStyle=`hsla(${palette.secondary},100%,70%,${beatFlash*.12})`;ctx.fillRect(0,0,w,h);beatFlash*=.86}
-}
-function drawAudioScene(data,bass,mid,high,time){
- const w=canvas.width,h=canvas.height,energy=(bass*.55+mid*.3+high*.15)/255;
- // Each scene is an actual visual treatment, selected from the song's frequency/energy profile.
- ctx.save();ctx.globalCompositeOperation="lighter";
- if(sceneIndex===0){ // AWAKENING: expanding pulse rings, strongest on bass hits
-  const cx=w*.5,cy=h*.48,base=Math.min(w,h)*(.16+energy*.025);
-  for(let k=0;k<3;k++){const r=base+((time*.035+k*Math.min(w,h)*.12)%(Math.min(w,h)*.42));ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=`hsla(${palette.hue+k*18},100%,70%,${.12+energy*.12})`;ctx.lineWidth=Math.max(2,Math.min(w,h)*.002);ctx.stroke()}
- }else if(sceneIndex===1){ // NEON RAIN: frequency-reactive falling streaks
-  for(let i=0;i<34;i++){const x=((i*7919+Math.sin(time*.001+i)*45)%w+w)%w;const y=((time*(.12+(high/255)*.5)+i*137)%(h+160))-80;ctx.strokeStyle=`hsla(${palette.secondary},100%,70%,${.12+(high/255)*.45})`;ctx.lineWidth=1+(high/255)*3;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-8,y+24+(mid/255)*60);ctx.stroke()}
- }else if(sceneIndex===2){ // VOID HEART: distorted horizontal scan lines and brief beat glitches
-  const count=4+Math.round(mid/24);for(let i=0;i<count;i++){const y=((i*173+time*.04)%(h));const shift=(Math.sin(time*.01+i*3)*bass/255)*w*.025;ctx.fillStyle=`hsla(${palette.secondary},100%,65%,${.025+(mid/255)*.09})`;ctx.fillRect(shift,y,w*(.2+(i%4)*.17),Math.max(2,h*.002+(mid/255)*h*.004))}
-  if(beatFlash>.5){ctx.fillStyle=`hsla(${palette.secondary},100%,70%,${beatFlash*.07})`;ctx.fillRect(0,h*.2,w,h*.012);ctx.fillRect(0,h*.72,w,h*.008)}
- }else{ // AFTERGLOW: soft orbiting light arcs, opens up on high frequencies
-  const cx=w*.5,cy=h*.48,r=Math.min(w,h)*(.24+(high/255)*.05);ctx.lineWidth=Math.max(3,Math.min(w,h)*(.004+(high/255)*.006));
-  for(let i=0;i<5;i++){ctx.beginPath();ctx.ellipse(cx,cy,r*(1+i*.12),r*(.55+i*.1),time*.00012*(i%2?1:-1),time*.001+i,time*.001+i+Math.PI*(1.1+high/255));ctx.strokeStyle=`hsla(${palette.hue+i*13},100%,75%,${.12+(high/255)*.25})`;ctx.stroke()}
- }
- ctx.restore();
 }
 function drawParticles(bass,time){ctx.save();ctx.globalCompositeOperation="lighter";for(const p of particles.slice(0,particleCount)){p.y-=p.s*(.45+bass/150)*intensity;p.x+=Math.sin(time*.0005+p.p)*.35;if(p.y<0){p.y=canvas.height+5;p.x=Math.random()*canvas.width}ctx.beginPath();ctx.arc(p.x,p.y,p.r+(bass/255)*2,0,Math.PI*2);ctx.fillStyle=`hsla(${palette.hue+Math.sin(p.p)*25},100%,70%,${Math.min(1,p.a*(.5+bass/300))*.55})`;ctx.shadowBlur=12*glow;ctx.shadowColor=palette.accent;ctx.fill()}ctx.restore()}
 function drawSpectrum(data,bass,time){if(!$("#showSpectrum").checked)return;const w=canvas.width,h=canvas.height,cx=w*.5,cy=h*(format==="portrait"?.48:.51),base=Math.min(w,h)*(format==="portrait"?.145:.19);ctx.save();ctx.translate(cx,cy);ctx.globalCompositeOperation="lighter";for(let i=0;i<144;i++){const v=data[Math.floor(i*data.length/144)]/255,ang=i/144*Math.PI*2-Math.PI/2,len=(10+v*base*.7)*intensity;ctx.beginPath();ctx.moveTo(Math.cos(ang)*base,Math.sin(ang)*base);ctx.lineTo(Math.cos(ang)*(base+len+beatFlash*base*.18),Math.sin(ang)*(base+len+beatFlash*base*.18));ctx.strokeStyle=`hsla(${palette.hue+(i/144)*70},100%,${60+v*25}%,${.4+v*.6})`;ctx.lineWidth=Math.max(2,Math.min(w,h)*.0025);ctx.shadowBlur=glow*22;ctx.shadowColor=palette.accent;ctx.stroke()}ctx.beginPath();ctx.arc(0,0,base-2,0,Math.PI*2);ctx.strokeStyle=`hsla(${palette.secondary},100%,70%,.5)`;ctx.lineWidth=2;ctx.stroke();ctx.restore()}
@@ -66,29 +54,26 @@ function drawLyrics(){
  ctx.fillText(line.text,w/2,y,w*.88);ctx.restore();
 }
 function drawVignette(){const w=canvas.width,h=canvas.height,g=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*.18,w/2,h/2,Math.max(w,h)*.72);g.addColorStop(0,"transparent");g.addColorStop(1,"rgba(0,0,0,.65)");ctx.fillStyle=g;ctx.fillRect(0,0,w,h)}
-function render(time=0){requestAnimationFrame(render);const d=frequencyData(),bass=average(d,0,14),mid=average(d,14,100),high=average(d,100,Math.min(260,d.length));
- const energy=(bass*.55+mid*.30+high*.15)/255;sceneEnergy=sceneEnergy*.9+energy*.1;sceneBass=sceneBass*.88+bass*.12;sceneMid=sceneMid*.88+mid*.12;sceneHigh=sceneHigh*.88+high*.12;
- if(bass>previousBass+18&&bass>65){beatFlash=1;lastBeat=time}previousBass=bass;
- // Scene changes follow the audio timeline and sustained musical energy, not page uptime.
- const audioClock=audio.currentTime||0,elapsed=audioClock-lastSceneAudioTime;
- if(audioClock<lastSceneAudioTime){sceneHoldUntil=audioClock+7;}
- if($("#autoScenes").checked&&audioClock>=sceneHoldUntil&&elapsed>=7&&audioClock-lastSceneChange>=8){
-   let next=sceneIndex;
-   if(sceneEnergy>.48||sceneBass>115)next=0; // powerful low-end: Awakening
-   else if(sceneHigh>75)next=1; // bright/high-frequency sections: Neon Rain
-   else if(sceneMid>65)next=2; // dense midrange: Void Heart
-   else next=3; // quieter/open sections: Afterglow
-   if(next===sceneIndex)next=(sceneIndex+1)%scenes.length;
-   sceneIndex=next;lastSceneChange=audioClock;sceneHoldUntil=audioClock+7;
-   $("#sceneLabel").textContent=`ESCENA 0${sceneIndex+1} / ${scenes[sceneIndex]}`;
+function render(time=0){requestAnimationFrame(render);const d=frequencyData(),bass=average(d,0,14),mid=average(d,14,100);if(bass>previousBass+18&&bass>65){beatFlash=1;lastBeat=time;
+  if(videoClips.length && time-lastVideoCut>1500){switchVideoClip();lastVideoCut=time;}
+ }previousBass=bass;
+ if(videoClips.length){
+  if(activeVideoIndex<0){activeVideoIndex=0;lastVideoCut=time;}
+  else if(videoClips.length>1 && time-lastVideoCut>4500){switchVideoClip();lastVideoCut=time;}
+  const current=videoClips[activeVideoIndex]?.video;
+  videoClips.forEach((item,i)=>{if(i===activeVideoIndex){if(audio && !audio.paused && item.video.paused)item.video.play().catch(()=>{});else if(audio.paused&&!item.video.paused)item.video.pause();}else item.video.pause();});
  }
- lastSceneAudioTime=audioClock;
- drawBg(bass,mid,time);drawAudioScene(d,sceneBass,sceneMid,sceneHigh,time);drawParticles(bass,time);drawSpectrum(d,bass,time);drawText();drawVignette();drawLyrics()}
+ if($("#autoScenes").checked&&time-lastSceneChange>18000){sceneIndex=(sceneIndex+1)%scenes.length;lastSceneChange=time;$("#sceneLabel").textContent=`ESCENA 0${sceneIndex+1} / ${scenes[sceneIndex]}`}
+ drawBg(bass,mid,time);if(!videoClips.length){drawParticles(bass,time);drawSpectrum(d,bass,time);drawText();drawVignette();drawLyrics()}}
+function switchVideoClip(){if(!videoClips.length)return;const old=videoClips[activeVideoIndex]?.video;if(old)old.pause();activeVideoIndex=(activeVideoIndex+1)%videoClips.length;videoCutCount++;const next=videoClips[activeVideoIndex].video;try{next.currentTime=0}catch{}if(audio&&!audio.paused)next.play().catch(()=>{});const label=$("#videoClipsStatus");if(label)label.textContent=`${videoClips.length} clips cargados · toma actual ${activeVideoIndex+1}/${videoClips.length} · cortes al detectar golpes musicales`;}
+function drawClipList(){const list=$("#videoClipsList");if(!list)return;if(!videoClips.length){list.innerHTML='<p class="hint">Añade clips MP4, WebM o MOV para construir el videoclip.</p>';return;}list.innerHTML=videoClips.map((c,i)=>`<div class="uploaded-clip"><span>${i+1}. ${escapeHtml(c.file.name)}</span><button type="button" data-remove-video="${i}" aria-label="Quitar clip">Quitar</button></div>`).join('');list.querySelectorAll('[data-remove-video]').forEach(btn=>btn.addEventListener('click',()=>{const i=Number(btn.dataset.removeVideo);const item=videoClips.splice(i,1)[0];item.video.pause();URL.revokeObjectURL(item.url);if(activeVideoIndex>=videoClips.length)activeVideoIndex=videoClips.length-1;else if(i<=activeVideoIndex)activeVideoIndex=Math.max(0,activeVideoIndex-1);drawClipList();}));}
+$("#videoClipsFile")?.addEventListener("change",e=>{const files=[...(e.target.files||[])].filter(f=>f.type.startsWith('video/'));for(const file of files){const url=URL.createObjectURL(file),video=document.createElement('video');video.src=url;video.muted=true;video.loop=true;video.playsInline=true;video.preload='auto';videoClips.push({file,url,video});}activeVideoIndex=videoClips.length?0:-1;drawClipList();const label=$("#videoClipsStatus");if(label)label.textContent=`${videoClips.length} clips listos. Se alternarán automáticamente al detectar golpes musicales; el audio final será la canción cargada.`;if(videoClips[0]&&audio&&!audio.paused)videoClips[0].video.play().catch(()=>{});e.target.value='';});
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
 $("#audioFile").addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(f);audio.src=audioUrl;$("#trackName").textContent=f.name;$("#exportMessage").textContent="Audio cargado. La detección de beats se activa al reproducir.";status("AUDIO CARGADO")});
 $("#imageFile").addEventListener("change",e=>{const f=e.target.files?.[0];if(!f)return;if(imageUrl)URL.revokeObjectURL(imageUrl);imageUrl=URL.createObjectURL(f);const im=new Image();im.onload=()=>image=im;im.src=imageUrl});
-$("#playBtn").addEventListener("click",()=>{$("#exportBtn").click()});
-audio.addEventListener("ended",()=>{if(!recording)status("TERMINADO")});audio.addEventListener("pause",()=>{});
-$("#stopBtn").addEventListener("click",()=>{audio.pause();audio.currentTime=0;$("#playBtn").textContent="▶ Generar video de la canción completa";status("DETENIDO")});
+$("#playBtn").addEventListener("click",async()=>{if(!audio.src){$("#audioFile").click();return}try{await setupAudio();if(audio.paused){await audio.play();$("#playBtn").textContent="Ⅱ Pausar";status("REPRODUCIENDO")}else{audio.pause();$("#playBtn").textContent="▶ Reproducir";status("PAUSADO")}}catch(e){alert("No se pudo reproducir el audio: "+e.message)}});
+audio.addEventListener("ended",()=>{if(!recording)status("TERMINADO")});audio.addEventListener("pause",()=>{if(!recording)$("#playBtn").textContent="▶ Reproducir"});
+$("#stopBtn").addEventListener("click",()=>{audio.pause();audio.currentTime=0;$("#playBtn").textContent="▶ Reproducir";status("DETENIDO")});
 document.querySelectorAll(".format").forEach(b=>b.addEventListener("click",()=>{format=b.dataset.format;document.querySelectorAll(".format").forEach(x=>x.classList.toggle("active",x===b));resizeCanvas()}));
 $("#preset").addEventListener("change",e=>{palette=palettes[e.target.value]||palettes.gothic;document.documentElement.style.setProperty("--pink",palette.accent);});
 function range(id,out,fmt,fn){$("#"+id).addEventListener("input",e=>{const v=+e.target.value;$("#"+out).textContent=fmt(v);fn(v)})}
@@ -253,28 +238,6 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
      if(audio.seeking===false && audio.readyState>=2 && Math.abs(audio.currentTime-item.start)<0.25)finish();
     });
     await setupAudio();
-    // Preflight playback while still inside the export flow. This catches blocked
-    // playback before MediaRecorder starts, rather than leaving a silent/empty clip.
-    try {
-     await audio.play();
-     await new Promise((resolve,reject)=>{
-      if(!audio.paused && audio.readyState>=2){resolve();return;}
-      const timer=setTimeout(()=>{cleanup();reject(new Error("El audio no comenzó a reproducirse. Pulsa Reproducir una vez y vuelve a exportar."));},5000);
-      const playing=()=>{cleanup();resolve();};
-      const error=()=>{cleanup();reject(new Error("El navegador no pudo iniciar el audio para grabar."));};
-      function cleanup(){clearTimeout(timer);audio.removeEventListener("playing",playing);audio.removeEventListener("error",error);}
-      audio.addEventListener("playing",playing,{once:true});audio.addEventListener("error",error,{once:true});
-     });
-     audio.pause();
-     if(Math.abs(audio.currentTime-item.start)>0.05){
-      await new Promise((resolve,reject)=>{
-       const timer=setTimeout(()=>{cleanup();reject(new Error("No se pudo volver al inicio del clip después de comprobar el audio."));},5000);
-       const seeked=()=>{cleanup();resolve();};
-       function cleanup(){clearTimeout(timer);audio.removeEventListener("seeked",seeked);}
-       audio.addEventListener("seeked",seeked,{once:true});audio.currentTime=item.start;
-      });
-     }
-    } catch(preflightError) { throw preflightError; }
     const fps=Number($("#fps").value),compact=$("#quality").value==="compact";
     const canvasStream=canvas.captureStream(fps);
     const stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);
@@ -287,14 +250,7 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
      recorder.addEventListener("error",e=>{clearTimeout(watchdog);reject(new Error("MediaRecorder falló: "+(e.error?.message||"error desconocido")))},{once:true});
     });
     recorder.start(250);status(`GRABANDO CLIP ${done+1}/${total}`);msg.textContent=`Grabando video en tiempo real: ${item.name} (${targetFormat==="portrait"?"9:16":"16:9"})…`;
-    try { await audio.play(); }
-    catch(playError) {
-     if(recorder.state!=="inactive")recorder.stop();
-     try { await stopped; } catch {}
-     canvasStream.getTracks().forEach(t=>t.stop());
-     stream.getTracks().forEach(t=>t.stop());
-     throw new Error("No se pudo iniciar la reproducción durante la grabación: "+(playError?.message||playError));
-    }
+    await audio.play();
     await new Promise((resolve,reject)=>{
      let finished=false;
      const cleanup=()=>{clearInterval(poll);clearTimeout(timeout);audio.removeEventListener("timeupdate",tick);audio.removeEventListener("error",onError)};
@@ -366,41 +322,104 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
   try{audio.pause();audio.ontimeupdate=null;audio.currentTime=Math.min(oldTime||0,Number.isFinite(audio.duration)?audio.duration:0)}catch{}
   format=oldFormat;resizeCanvas();recording=false;clipExporting=false;btn.disabled=false;
   if(!oldPaused&&audio.src){/* Keep transport state predictable; don't resume after batch export. */}
-  $("#playBtn").textContent="▶ Generar video de la canción completa";
+  $("#playBtn").textContent="▶ Reproducir";
   if(ff){try{ff.terminate()}catch{}}
  }
 });
-$("#exportBtn").addEventListener("click",async()=>{
- if(recording)return;
- if(!audio.src){alert("Primero carga la canción que quieres convertir en video.");return}
- if(!window.MediaRecorder||!canvas.captureStream){alert("Necesitas Chrome o Edge actualizado para generar el video.");return}
- let recorder=null,canvasStream=null,stream=null,webm=null;
- const btn=$("#exportBtn"),link=$("#downloadLink"),msg=$("#exportMessage"),bar=$("#progressBar");
- try{
+$("#exportBtn").addEventListener("click", async () => {
+ if (recording) return;
+ if (!audio.src) { alert("Primero selecciona la canción completa que quieres convertir en video."); return; }
+ if (!window.MediaRecorder || !canvas.captureStream) { alert("Necesitas una versión actualizada de Chrome o Edge para generar el video."); return; }
+ if (!Number.isFinite(audio.duration) || audio.duration <= 0) { alert("El audio todavía no está listo. Espera a que cargue e inténtalo de nuevo."); return; }
+ let recorder = null, canvasStream = null, webm = null, ff = null;
+ const link = $("#downloadLink"), msg = $("#exportMessage"), bar = $("#progressBar");
+ const wasFormat = format;
+ recording = true; $("#exportBtn").disabled = true; link.hidden = true; bar.style.width = "0%";
+ try {
   await setupAudio();
-  if(audio.readyState<2)await new Promise((resolve,reject)=>{const ok=()=>{clean();resolve()},bad=()=>{clean();reject(new Error("No se pudo cargar el audio."))},clean=()=>{audio.removeEventListener("canplay",ok);audio.removeEventListener("error",bad)};audio.addEventListener("canplay",ok,{once:true});audio.addEventListener("error",bad,{once:true});audio.load()});
-  recording=true;btn.disabled=true;link.hidden=true;bar.style.width="0%";
-  const fps=Number($("#fps").value),compact=$("#quality").value==="compact";
-  canvasStream=canvas.captureStream(fps);stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);
-  const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";
-  recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:compact?4500000:8000000});
-  const chunks=[];recorder.addEventListener("dataavailable",e=>{if(e.data?.size)chunks.push(e.data)});
-  const stopped=new Promise((resolve,reject)=>{recorder.addEventListener("stop",resolve,{once:true});recorder.addEventListener("error",e=>reject(new Error(e.error?.message||"Error de grabación")),{once:true})});
-  audio.pause();audio.currentTime=0;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-  recorder.start(1000);status("GENERANDO VIDEO COMPLETO");msg.textContent="Generando el video de la canción completa en tiempo real. No necesitas crear clips. Mantén esta pestaña abierta.";
+  // Start recording from the beginning and keep the full song, not manually-created clips.
+  audio.pause(); audio.currentTime = 0;
+  if(videoClips.length){activeVideoIndex=0;lastVideoCut=0;videoClips.forEach((item,i)=>{item.video.pause();try{item.video.currentTime=0}catch{}if(i===0)item.video.play().catch(()=>{});});}
+  await new Promise((resolve, reject) => {
+   const timer = setTimeout(() => reject(new Error("El audio no pudo posicionarse al inicio.")), 8000);
+   const done = () => { clearTimeout(timer); audio.removeEventListener("seeked", done); resolve(); };
+   if (audio.currentTime === 0 && !audio.seeking) { clearTimeout(timer); resolve(); }
+   else { audio.addEventListener("seeked", done, { once: true }); audio.currentTime = 0; }
+  });
+  const fps = Number($("#fps").value), compact = $("#quality").value === "compact";
+  canvasStream = canvas.captureStream(fps);
+  const stream = new MediaStream([...canvasStream.getVideoTracks(), ...mediaDestination.stream.getAudioTracks()]);
+  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm";
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: compact ? 4500000 : 8000000 });
+  const chunks = [];
+  recorder.addEventListener("dataavailable", e => { if (e.data && e.data.size) chunks.push(e.data); });
+  const stopped = new Promise((resolve, reject) => {
+   recorder.addEventListener("stop", resolve, { once: true });
+   recorder.addEventListener("error", e => reject(new Error("Falló la grabación del navegador: " + (e.error?.message || "error desconocido"))), { once: true });
+  });
+  recorder.start(1000);
+  status("GENERANDO VIDEO");
+  msg.textContent = "Generando el video de la canción completa en tiempo real. Mantén esta pestaña abierta hasta que termine.";
   await audio.play();
-  const duration=Number.isFinite(audio.duration)?audio.duration:0;
-  await new Promise((resolve,reject)=>{let done=false;const finish=()=>{if(done)return;done=true;clearInterval(poll);clearTimeout(timeout);audio.removeEventListener("ended",finish);audio.removeEventListener("error",bad);resolve()},bad=()=>{if(done)return;done=true;clearInterval(poll);clearTimeout(timeout);reject(new Error("La reproducción de audio falló durante la grabación."))};const poll=setInterval(()=>{if(duration>0)bar.style.width=Math.min(95,Math.round(audio.currentTime/duration*95))+"%";if(audio.ended||(duration>0&&audio.currentTime>=duration-.05))finish()},100);const timeout=setTimeout(()=>{if(!audio.ended){done=true;clearInterval(poll);audio.removeEventListener("ended",finish);audio.removeEventListener("error",bad);reject(new Error("La reproducción no llegó al final. Comprueba que la canción se reproduce completa."))}},Math.max(60000,(duration||60)*2000));audio.addEventListener("ended",finish,{once:true});audio.addEventListener("error",bad,{once:true});if(audio.ended)finish()});
-  if(recorder.state!=="inactive")recorder.stop();await stopped;webm=new Blob(chunks,{type:"video/webm"});
-  if(!webm.size)throw new Error("La grabación terminó vacía; el navegador no entregó datos de video.");
-  let blob=webm,ext="webm",note="Video WebM listo";
-  msg.textContent="Video grabado. Intentando convertirlo a MP4…";status("CONVIRTIENDO MP4");
-  let ff=null;
-  try{ff=await loadFFmpeg();const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");await ff.writeFile("xz-full-input.webm",await fetchFile(webm));const args=["-i","xz-full-input.webm"];if(compact)args.push("-vf",format==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","-f","mp4","xz-full-output.mp4");await ff.exec(args);const data=await ff.readFile("xz-full-output.mp4");const converted=new Blob([data.buffer],{type:"video/mp4"});if(converted.size<1024)throw new Error("MP4 demasiado pequeño");blob=converted;ext="mp4";note="MP4 generado correctamente";
-  }catch(convErr){console.warn("MP4 no disponible; se entrega el video WebM grabado",convErr);note="MP4 no disponible; video WebM generado";msg.textContent="La conversión MP4 falló, pero el video ya está grabado. Preparando descarga WebM…"}
-  finally{if(ff)try{ff.terminate()}catch{}}
-  const url=URL.createObjectURL(blob);link.href=url;link.download=`XZ-Visualizer-${format==="landscape"?"16x9":"9x16"}.${ext}`;link.textContent=`⬇ Descargar video completo ${ext.toUpperCase()} (${(blob.size/1048576).toFixed(1)} MB)`;link.hidden=false;bar.style.width="100%";msg.textContent=`${note}. Pulsa “Descargar video completo” para guardarlo.`;status("VIDEO GENERADO");
- }catch(err){console.error(err);msg.textContent="No se pudo generar el video: "+(err?.message||err);status("ERROR DE VIDEO")}
- finally{try{audio.pause()}catch{};if(recorder&&recorder.state!=="inactive")try{recorder.stop()}catch{};if(canvasStream)canvasStream.getTracks().forEach(t=>t.stop());if(stream)stream.getTracks().forEach(t=>t.getTracks?.().forEach(x=>x.stop()));recording=false;btn.disabled=false;$("#playBtn").textContent="▶ Reproducir"}
+  const duration = audio.duration;
+  const progressTimer = setInterval(() => {
+   const pct = Math.min(95, Math.floor((audio.currentTime / duration) * 95));
+   bar.style.width = pct + "%";
+   msg.textContent = `Grabando canción completa: ${Math.floor(audio.currentTime)} de ${Math.ceil(duration)} segundos…`;
+  }, 250);
+  try {
+   await new Promise((resolve, reject) => {
+    const cleanup = () => { audio.removeEventListener("ended", onEnded); audio.removeEventListener("error", onError); };
+    const onEnded = () => { cleanup(); resolve(); };
+    const onError = () => { cleanup(); reject(new Error("El audio falló antes de terminar.")); };
+    audio.addEventListener("ended", onEnded, { once: true });
+    audio.addEventListener("error", onError, { once: true });
+   });
+  } finally { clearInterval(progressTimer); }
+  if (recorder.state !== "inactive") recorder.stop();
+  await stopped;
+  canvasStream.getTracks().forEach(t => t.stop());
+  webm = new Blob(chunks, { type: "video/webm" });
+  if (webm.size < 1024) throw new Error("La grabación quedó vacía. El navegador no entregó datos de video.");
+
+  // Always preserve a downloadable full-song video, even if MP4 conversion/CDN fails.
+  let blob = webm, extension = "webm", note = "Video completo WebM";
+  msg.textContent = "La grabación está lista. Intentando convertirla a MP4…";
+  try {
+   ff = await loadFFmpeg();
+   const { fetchFile } = await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");
+   await ff.writeFile("xz-full-song.webm", await fetchFile(webm));
+   const args = ["-i", "xz-full-song.webm"];
+   if (compact) args.push("-vf", format === "portrait" ? "scale=720:1280:flags=lanczos" : "scale=1280:720:flags=lanczos");
+   args.push("-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-f", "mp4", "xz-full-song.mp4");
+   await ff.exec(args);
+   const out = await ff.readFile("xz-full-song.mp4");
+   const mp4 = new Blob([out], { type: "video/mp4" });
+   if (mp4.size < 1024) throw new Error("El archivo MP4 generado está vacío.");
+   blob = mp4; extension = "mp4"; note = "Video completo MP4";
+  } catch (conversionError) {
+   console.warn("No se pudo convertir a MP4; se conserva el video WebM completo:", conversionError);
+   note = "Video completo WebM (MP4 no disponible)";
+  }
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `XZ-Visualizer-Cancion-Completa-${format === "landscape" ? "16x9" : "9x16"}.${extension}`;
+  link.textContent = `⬇ Descargar video completo ${extension.toUpperCase()} (${(blob.size / 1048576).toFixed(1)} MB)`;
+  link.hidden = false; bar.style.width = "100%";
+  msg.textContent = `${note} generado correctamente. Pulsa el enlace de descarga.`;
+  status("VIDEO COMPLETO LISTO");
+ } catch (err) {
+  console.error(err);
+  if (recorder && recorder.state !== "inactive") { try { recorder.stop(); } catch {} }
+  msg.textContent = "No se pudo generar el video: " + (err.message || err) + ". Revisa que la canción se reproduzca correctamente y vuelve a intentarlo.";
+  status("ERROR DE GENERACIÓN");
+ } finally {
+  try { audio.pause(); videoClips.forEach(item=>item.video.pause()); } catch {}
+  if (canvasStream) canvasStream.getTracks().forEach(t => t.stop());
+  if (ff) { try { ff.terminate(); } catch {} }
+  recording = false; $("#exportBtn").disabled = false; $("#playBtn").textContent = "▶ Reproducir";
+  // Restore selected visualizer format; the song is not clipped or split.
+  format = wasFormat; resizeCanvas();
+ }
 });
 resizeCanvas();seedParticles();render();
