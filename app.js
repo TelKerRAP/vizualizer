@@ -336,9 +336,37 @@ $("#exportClipsBtn").addEventListener("click",async()=>{
   if(ff){try{ff.terminate()}catch{}}
  }
 });
-$("#exportBtn").addEventListener("click",async()=>{if(recording)return;if(!audio.src){$("#audioFile").click();return}if(!window.MediaRecorder||!canvas.captureStream){alert("Usa Chrome o Edge actualizado para grabar el canvas.");return}
- let recorder,canvasStream;try{await setupAudio();recording=true;$("#exportBtn").disabled=true;$("#downloadLink").hidden=true;$("#progressBar").style.width="0%";audio.currentTime=0;await audio.play();const fps=+$("#fps").value,compact=$("#quality").value==="compact";canvasStream=canvas.captureStream(fps);const stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:compact?4500000:8000000});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise(resolve=>recorder.onstop=resolve);recorder.start(1000);status("GRABANDO");$("#exportMessage").textContent="Grabando en tiempo real hasta que termine la canción. Mantén la pestaña activa.";
- await new Promise((resolve,reject)=>{audio.addEventListener("ended",resolve,{once:true});audio.addEventListener("error",()=>reject(new Error("Error de reproducción del audio")),{once:true})});recorder.stop();await stopped;canvasStream.getTracks().forEach(t=>t.stop());const webm=new Blob(chunks,{type:"video/webm"});if(!webm.size)throw new Error("Grabación vacía");
- status("CONVIRTIENDO");$("#exportMessage").textContent="Cargando FFmpeg y convirtiendo a MP4…";const ff=await loadFFmpeg();const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");await ff.writeFile("input.webm",await fetchFile(webm));const args=["-i","input.webm"];if(compact)args.push("-vf",format==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","output.mp4");await ff.exec(args);const out=await ff.readFile("output.mp4");const blob=new Blob([out.buffer],{type:"video/mp4"}),url=URL.createObjectURL(blob),link=$("#downloadLink");link.href=url;link.download=`XZ-Visualizer-${format==="landscape"?"16x9":"9x16"}.mp4`;link.textContent=`⬇ Descargar MP4 (${(blob.size/1048576).toFixed(1)} MB)`;link.hidden=false;$("#progressBar").style.width="100%";$("#exportMessage").textContent="Exportación terminada.";status("EXPORTADO");await ff.deleteFile("input.webm");await ff.deleteFile("output.mp4");
- }catch(err){console.error(err);if(recorder&&recorder.state!=="inactive")recorder.stop();$("#exportMessage").textContent="Error al exportar: "+(err.message||err)+". Comprueba la conexión y prueba con un tema corto.";status("ERROR")}finally{recording=false;$("#exportBtn").disabled=false;if(!audio.paused)audio.pause();$("#playBtn").textContent="▶ Reproducir";if(canvasStream)canvasStream.getTracks().forEach(t=>t.stop())}});
+$("#exportBtn").addEventListener("click",async()=>{
+ if(recording)return;
+ if(!audio.src){alert("Primero carga la canción que quieres convertir en video.");return}
+ if(!window.MediaRecorder||!canvas.captureStream){alert("Necesitas Chrome o Edge actualizado para generar el video.");return}
+ let recorder=null,canvasStream=null,stream=null,webm=null;
+ const btn=$("#exportBtn"),link=$("#downloadLink"),msg=$("#exportMessage"),bar=$("#progressBar");
+ try{
+  await setupAudio();
+  if(audio.readyState<2)await new Promise((resolve,reject)=>{const ok=()=>{clean();resolve()},bad=()=>{clean();reject(new Error("No se pudo cargar el audio."))},clean=()=>{audio.removeEventListener("canplay",ok);audio.removeEventListener("error",bad)};audio.addEventListener("canplay",ok,{once:true});audio.addEventListener("error",bad,{once:true});audio.load()});
+  recording=true;btn.disabled=true;link.hidden=true;bar.style.width="0%";
+  const fps=Number($("#fps").value),compact=$("#quality").value==="compact";
+  canvasStream=canvas.captureStream(fps);stream=new MediaStream([...canvasStream.getVideoTracks(),...mediaDestination.stream.getAudioTracks()]);
+  const mime=MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")?"video/webm;codecs=vp9,opus":"video/webm";
+  recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:compact?4500000:8000000});
+  const chunks=[];recorder.addEventListener("dataavailable",e=>{if(e.data?.size)chunks.push(e.data)});
+  const stopped=new Promise((resolve,reject)=>{recorder.addEventListener("stop",resolve,{once:true});recorder.addEventListener("error",e=>reject(new Error(e.error?.message||"Error de grabación")),{once:true})});
+  audio.pause();audio.currentTime=0;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  recorder.start(1000);status("GENERANDO VIDEO COMPLETO");msg.textContent="Generando el video de la canción completa en tiempo real. No necesitas crear clips. Mantén esta pestaña abierta.";
+  await audio.play();
+  const duration=Number.isFinite(audio.duration)?audio.duration:0;
+  await new Promise((resolve,reject)=>{let done=false;const finish=()=>{if(done)return;done=true;clearInterval(poll);clearTimeout(timeout);audio.removeEventListener("ended",finish);audio.removeEventListener("error",bad);resolve()},bad=()=>{if(done)return;done=true;clearInterval(poll);clearTimeout(timeout);reject(new Error("La reproducción de audio falló durante la grabación."))};const poll=setInterval(()=>{if(duration>0)bar.style.width=Math.min(95,Math.round(audio.currentTime/duration*95))+"%";if(audio.ended||(duration>0&&audio.currentTime>=duration-.05))finish()},100);const timeout=setTimeout(()=>{if(!audio.ended){done=true;clearInterval(poll);audio.removeEventListener("ended",finish);audio.removeEventListener("error",bad);reject(new Error("La reproducción no llegó al final. Comprueba que la canción se reproduce completa."))}},Math.max(60000,(duration||60)*2000));audio.addEventListener("ended",finish,{once:true});audio.addEventListener("error",bad,{once:true});if(audio.ended)finish()});
+  if(recorder.state!=="inactive")recorder.stop();await stopped;webm=new Blob(chunks,{type:"video/webm"});
+  if(!webm.size)throw new Error("La grabación terminó vacía; el navegador no entregó datos de video.");
+  let blob=webm,ext="webm",note="Video WebM listo";
+  msg.textContent="Video grabado. Intentando convertirlo a MP4…";status("CONVIRTIENDO MP4");
+  let ff=null;
+  try{ff=await loadFFmpeg();const {fetchFile}=await import("https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js");await ff.writeFile("xz-full-input.webm",await fetchFile(webm));const args=["-i","xz-full-input.webm"];if(compact)args.push("-vf",format==="portrait"?"scale=720:1280:flags=lanczos":"scale=1280:720:flags=lanczos");args.push("-c:v","libx264","-preset","ultrafast","-pix_fmt","yuv420p","-c:a","aac","-b:a","192k","-movflags","+faststart","-f","mp4","xz-full-output.mp4");await ff.exec(args);const data=await ff.readFile("xz-full-output.mp4");const converted=new Blob([data.buffer],{type:"video/mp4"});if(converted.size<1024)throw new Error("MP4 demasiado pequeño");blob=converted;ext="mp4";note="MP4 generado correctamente";
+  }catch(convErr){console.warn("MP4 no disponible; se entrega el video WebM grabado",convErr);note="MP4 no disponible; video WebM generado";msg.textContent="La conversión MP4 falló, pero el video ya está grabado. Preparando descarga WebM…"}
+  finally{if(ff)try{ff.terminate()}catch{}}
+  const url=URL.createObjectURL(blob);link.href=url;link.download=`XZ-Visualizer-${format==="landscape"?"16x9":"9x16"}.${ext}`;link.textContent=`⬇ Descargar video completo ${ext.toUpperCase()} (${(blob.size/1048576).toFixed(1)} MB)`;link.hidden=false;bar.style.width="100%";msg.textContent=`${note}. Pulsa “Descargar video completo” para guardarlo.`;status("VIDEO GENERADO");
+ }catch(err){console.error(err);msg.textContent="No se pudo generar el video: "+(err?.message||err);status("ERROR DE VIDEO")}
+ finally{try{audio.pause()}catch{};if(recorder&&recorder.state!=="inactive")try{recorder.stop()}catch{};if(canvasStream)canvasStream.getTracks().forEach(t=>t.stop());if(stream)stream.getTracks().forEach(t=>t.getTracks?.().forEach(x=>x.stop()));recording=false;btn.disabled=false;$("#playBtn").textContent="▶ Reproducir"}
+});
 resizeCanvas();seedParticles();render();

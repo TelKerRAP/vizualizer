@@ -89,3 +89,10 @@ Pulsa **Aplicar letras** después de editar. Las letras aparecen desde su marca 
 - Si FFmpeg no carga o falla la conversión, conserva el WebM ya grabado y muestra un enlace de descarga en vez de descartar el video.
 - El ZIP incluye cada archivo generado con su extensión real (.mp4 o .webm). Si falla la librería ZIP, mantiene disponibles los enlaces individuales.
 - Se validó la sintaxis con Node.js. No se pudo validar la reproducción/exportación en navegador en este entorno; prueba un clip de 5 segundos primero.
+
+
+## v3.0.5 — Video completo automático
+- El botón principal genera un video de toda la canción; no requiere crear clips manualmente.
+- Graba el canvas con audio hasta el final de la canción y después intenta convertir a MP4.
+- Si FFmpeg falla, conserva y ofrece el video WebM ya grabado.
+- La exportación se ejecuta en tiempo real: mantén la pestaña abierta y la canción reproduciéndose hasta que termine.
